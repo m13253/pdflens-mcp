@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
@@ -6,6 +7,7 @@ use base64::prelude::*;
 use eyre::{Result, bail, eyre};
 use hayro::{InterpreterSettings, Pdf, RenderSettings};
 use pdf_extract::extract_text_from_mem_by_pages;
+use percent_encoding::percent_decode_str;
 use regex::Regex;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -94,7 +96,12 @@ impl PdflensService {
             .filter_map(|root| {
                 FILE_URI_REGEX
                     .captures(&root.uri)
-                    .map(|captures| PathBuf::from(&captures[1]))
+                    .and_then(|captures| {
+                        percent_decode_str(captures.get(1).unwrap().as_str())
+                            .decode_utf8()
+                            .ok()
+                    })
+                    .map(|path| PathBuf::from(path.as_ref()))
             })
             .collect::<Vec<_>>();
         for root in &mut roots {
@@ -176,72 +183,77 @@ impl PdflensService {
     }
 
     #[instrument(skip_all)]
-    async fn load_file(&self, filename: &str) -> Result<Vec<u8>> {
+    async fn load_file(&self, uri: &str) -> Result<Vec<u8>> {
         static MAYBE_URI_REGEX: LazyLock<Regex> =
             LazyLock::new(|| Regex::new("(?s)^(?:([A-Za-z][0-9A-Za-z]*):/{0,2})?(.*)").unwrap());
 
-        let captures = MAYBE_URI_REGEX.captures(filename).unwrap();
-        if captures
-            .get(1)
-            .map(|m| m.as_str().eq_ignore_ascii_case("file"))
-            .unwrap_or(true)
-        {
-            let filename = &captures[2];
-            let roots = self.roots.read().await.clone();
-            let roots_hashset = HashSet::<_>::from_iter(roots.iter());
+        let captures = MAYBE_URI_REGEX.captures(uri).unwrap();
+        let filename = if let Some(schema) = captures.get(1) {
+            if schema.as_str().eq_ignore_ascii_case("file") {
+                percent_decode_str(&captures[2]).decode_utf8()?
+            } else {
+                bail!(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("File not found: {uri:?}\nUse `list_mcp_root_paths` to diagnose")
+                ));
+            }
+        } else {
+            Cow::from(&captures[2])
+        };
 
-            if filename.starts_with(&['/', '\\']) {
-                let path = match tokio::fs::canonicalize(filename).await {
+        let roots = self.roots.read().await.clone();
+        let roots_hashset = HashSet::<_>::from_iter(roots.iter());
+
+        if filename.starts_with(&['/', '\\']) {
+            let path = match tokio::fs::canonicalize(filename.as_ref()).await {
+                Ok(path) => path,
+                Err(err) => {
+                    if err.kind() == std::io::ErrorKind::NotFound {
+                        bail!(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!(
+                                "File not found: {filename:?}\nUse `list_mcp_root_paths` to diagnose"
+                            )
+                        ));
+                    } else {
+                        bail!(err);
+                    }
+                }
+            };
+            if !roots_hashset.into_iter().any(|root| path.starts_with(root)) {
+                bail!(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "File isn’t within any MCP root paths: {path:?}\nUse `list_mcp_root_paths` to diagnose"
+                    )
+                ))
+            }
+            let file_data = tokio::fs::read(path).await?;
+            Ok(file_data)
+        } else {
+            for root in roots {
+                let path = match tokio::fs::canonicalize(root.join(filename.as_ref())).await {
                     Ok(path) => path,
                     Err(err) => {
                         if err.kind() == std::io::ErrorKind::NotFound {
-                            bail!(std::io::Error::new(
-                                std::io::ErrorKind::NotFound,
-                                format!(
-                                    "File not found: {filename:?}\nUse `list_mcp_root_paths` to diagnose"
-                                )
-                            ));
+                            continue;
                         } else {
                             bail!(err);
                         }
                     }
                 };
-                if !roots_hashset.into_iter().any(|root| path.starts_with(root)) {
-                    bail!(std::io::Error::new(
-                        std::io::ErrorKind::PermissionDenied,
-                        format!(
-                            "File isn’t within any MCP root paths: {path:?}\nUse `list_mcp_root_paths` to diagnose"
-                        )
-                    ))
+                if !path.starts_with(root) {
+                    // Treat as not found
+                    continue;
                 }
                 let file_data = tokio::fs::read(path).await?;
                 return Ok(file_data);
-            } else {
-                for root in roots {
-                    let path = match tokio::fs::canonicalize(root.join(filename)).await {
-                        Ok(path) => path,
-                        Err(err) => {
-                            if err.kind() == std::io::ErrorKind::NotFound {
-                                continue;
-                            } else {
-                                bail!(err);
-                            }
-                        }
-                    };
-                    if !path.starts_with(root) {
-                        // Treat as not found
-                        continue;
-                    }
-                    let file_data = tokio::fs::read(path).await?;
-                    return Ok(file_data);
-                }
             }
+            bail!(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("File not found: {uri:?}\nUse `list_mcp_root_paths` to diagnose")
+            ));
         }
-
-        bail!(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("File not found: {filename:?}\nUse `list_mcp_root_paths` to diagnose")
-        ));
     }
 
     #[instrument(skip_all)]

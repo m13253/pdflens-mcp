@@ -10,6 +10,7 @@ color-eyre = "0.6.5"
 eyre = "0.6.12"
 hayro = "0.4.0"
 pdf-extract = "0.10.0"
+percent-encoding = "2.3.2"
 regex = "1.12.2"
 rmcp = { version = "0.8.5", features = ["transport-io"] }
 schemars = "1.1.0"
