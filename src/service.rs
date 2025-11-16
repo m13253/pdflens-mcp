@@ -25,8 +25,8 @@ pub struct PdflensService {
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(title = "pdf_get_num_pages")]
-pub struct PdfGetNumPagesParams {
+#[schemars(title = "pdf_get_page_count")]
+pub struct PdfGetPageCountParams {
     #[schemars(
         description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
     )]
@@ -120,11 +120,11 @@ impl PdflensService {
     }
 
     #[rmcp::tool(description = "Gets the number of pages in a PDF")]
-    pub async fn pdf_get_num_pages(
+    pub async fn pdf_get_page_count(
         &self,
-        Parameters(params): Parameters<PdfGetNumPagesParams>,
+        Parameters(params): Parameters<PdfGetPageCountParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.pdf_get_num_pages_handler(&params)
+        self.pdf_get_page_count_handler(&params)
             .await
             .or_else(|err| {
                 tracing::error!("{err:?}");
@@ -251,15 +251,15 @@ impl PdflensService {
     }
 
     #[instrument(skip_all)]
-    async fn pdf_get_num_pages_handler(
+    async fn pdf_get_page_count_handler(
         &self,
-        params: &PdfGetNumPagesParams,
+        params: &PdfGetPageCountParams,
     ) -> Result<CallToolResult> {
         let file_data = Arc::new(self.load_file(&params.filename).await?);
         let pdf = Pdf::new(file_data).map_err(|err| eyre!("Failed to load PDF: {err:?}"))?;
-        let num_pages = pdf.pages().len();
+        let page_count = pdf.pages().len();
         Ok(CallToolResult::success(vec![
-            Content::text(num_pages.to_string()).with_audience(vec![Role::Assistant]),
+            Content::text(page_count.to_string()).with_audience(vec![Role::Assistant]),
         ]))
     }
 
@@ -308,12 +308,12 @@ impl PdflensService {
             .to_page
             .map(|x| x.clamp(from_page_idx, pages.len()))
             .unwrap_or(pages.len());
-        let num_pages = to_page_idx - from_page_idx;
+        let page_count = to_page_idx - from_page_idx;
 
         let interpreter_settings = InterpreterSettings::default();
 
         let progress_token = context.meta.get_progress_token();
-        let mut content = Vec::with_capacity(num_pages);
+        let mut content = Vec::with_capacity(page_count);
         for (i, page) in pdf.pages()[from_page_idx..to_page_idx]
             .into_iter()
             .enumerate()
@@ -325,7 +325,7 @@ impl PdflensService {
                     .notify_progress(ProgressNotificationParam {
                         progress_token: progress_token.clone(),
                         progress: i as f64,
-                        total: Some(num_pages as f64),
+                        total: Some(page_count as f64),
                         message: None,
                     })
                     .await?;
@@ -370,8 +370,8 @@ impl PdflensService {
                 .peer
                 .notify_progress(ProgressNotificationParam {
                     progress_token: progress_token.clone(),
-                    progress: num_pages as f64,
-                    total: Some(num_pages as f64),
+                    progress: page_count as f64,
+                    total: Some(page_count as f64),
                     message: None,
                 })
                 .await?;
