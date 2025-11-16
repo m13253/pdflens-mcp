@@ -27,11 +27,11 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 
         ```json
         {
-            "mcpServers": {
-                "pdflens": {
-                    "command": "/path/to/pdflens-mcp/target/release/pdflens-mcp"
-                }
+          "mcpServers": {
+            "pdflens": {
+              "command": "/path/to/pdflens-mcp/target/release/pdflens-mcp"
             }
+          }
         }
         ```
 
@@ -46,7 +46,7 @@ An MCP server for reading PDFs, coded by human, designed for AI.
         ```yaml
         mcpServers:
         - name: pdflens
-            command: /path/to/pdflens-mcp/target/release/pdflens-mcp
+          command: /path/to/pdflens-mcp/target/release/pdflens-mcp
         ```
 
     4. Codex
@@ -66,12 +66,12 @@ If your MCP client doesn’t specify a root path, pdflens will fallback to the c
 
 ```json
 {
-    "mcpServers": {
-        "pdflens": {
-            "command": "/path/to/pdflens-mcp/target/release/pdflens-mcp",
-            "cwd": "/path/to/workspace/if/root/path/is/unsupported"
-        }
+  "mcpServers": {
+    "pdflens": {
+      "command": "/path/to/pdflens-mcp/target/release/pdflens-mcp",
+      "cwd": "/path/to/workspace/if/root/path/is/unsupported"
     }
+  }
 }
 ```
 
