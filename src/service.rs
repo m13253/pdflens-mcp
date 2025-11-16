@@ -291,7 +291,7 @@ impl PdflensService {
             .unwrap_or(text.len());
 
         text.truncate(to_page_idx);
-        text.drain(from_page_idx..);
+        text.drain(..from_page_idx);
 
         Ok(CallToolResult::success(vec![
             Content::text(text.join("\x0c")).with_audience(vec![Role::Assistant]),
