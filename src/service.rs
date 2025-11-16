@@ -151,7 +151,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Converts PDF to images. Please only use for pages of interest because it’s much slower than `pdf_to_text`."
+        description = "Converts PDF to images. Please only use for pages of interest because it’s much slower than `pdf_to_text`. This may fail if the user’s MCP client doesn’t support images"
     )]
     pub async fn pdf_to_images(
         &self,
