@@ -21,7 +21,7 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 
 3.  Locate the program file at `./target/release/pdflens-mcp`.
 
-4.  On your MCP client, add this MCP server.
+4.  Add this MCP server to your MCP client of choice.
 
     1. If your MCP client supports `mcp.json`:
 
