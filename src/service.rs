@@ -25,15 +25,6 @@ pub struct PdflensService {
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(title = "page_range")]
-pub struct PageRange {
-    #[schemars(description = "If omitted, starts from the beginning")]
-    pub from: Option<usize>,
-    #[schemars(description = "If omitted, stops at the end")]
-    pub to: Option<usize>,
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(title = "pdf_get_num_pages")]
 pub struct PdfGetNumPagesParams {
     #[schemars(
@@ -49,8 +40,10 @@ pub struct PdfToTextParams {
         description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
     )]
     pub filename: String,
-    #[schemars(description = "A range of pages to load")]
-    pub page_range: Option<PageRange>,
+    #[schemars(description = "If omitted, reads from the beginning")]
+    pub from_page: Option<usize>,
+    #[schemars(description = "If omitted, reads until the end")]
+    pub to_page: Option<usize>,
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
@@ -60,8 +53,10 @@ pub struct PdfToImagesParams {
         description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
     )]
     pub filename: String,
-    #[schemars(description = "A range of pages to load")]
-    pub page_range: Option<PageRange>,
+    #[schemars(description = "If omitted, reads from the beginning")]
+    pub from_page: Option<usize>,
+    #[schemars(description = "If omitted, reads until the end")]
+    pub to_page: Option<usize>,
     #[schemars(title = "Number of pixels on the longer side of the output image")]
     pub image_dimension: u16,
 }
@@ -271,15 +266,11 @@ impl PdflensService {
         let text = extract_text_from_mem_by_pages(&file_data)?;
 
         let from_page_idx = params
-            .page_range
-            .as_ref()
-            .and_then(|range| range.from)
+            .from_page
             .map(|x| x.saturating_sub(1).min(text.len()))
             .unwrap_or_default();
         let to_page_idx = params
-            .page_range
-            .as_ref()
-            .and_then(|range| range.to)
+            .to_page
             .map(|x| x.clamp(from_page_idx, text.len()))
             .unwrap_or(text.len());
 
@@ -304,15 +295,11 @@ impl PdflensService {
 
         // 0-based indices, half-closed half-open
         let from_page_idx = params
-            .page_range
-            .as_ref()
-            .and_then(|range| range.from)
+            .from_page
             .map(|x| x.saturating_sub(1).min(pages.len()))
             .unwrap_or_default();
         let to_page_idx = params
-            .page_range
-            .as_ref()
-            .and_then(|range| range.to)
+            .to_page
             .map(|x| x.clamp(from_page_idx, pages.len()))
             .unwrap_or(pages.len());
         let num_pages = to_page_idx - from_page_idx;
