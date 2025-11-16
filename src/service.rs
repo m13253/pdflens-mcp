@@ -1,68 +1,390 @@
-use eyre::Result;
-use rmcp::handler::server::tool::ToolRouter;
+use std::collections::{BTreeMap, HashSet};
+use std::path::PathBuf;
+use std::sync::{Arc, LazyLock};
+
+use base64::prelude::*;
+use eyre::{Result, bail, eyre};
+use hayro::{InterpreterSettings, Pdf, RenderSettings};
+use pdf_extract::extract_text_from_mem_by_pages;
+use regex::Regex;
+use rmcp::handler::server::tool::{IntoCallToolResult, ToolRouter};
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, Root, ServerCapabilities, ServerInfo};
-use rmcp::service::NotificationContext;
-use rmcp::{Peer, RoleServer, ServerHandler};
+use rmcp::model::{
+    CallToolResult, Content, ProgressNotificationParam, Role, ServerCapabilities, ServerInfo,
+};
+use rmcp::service::{NotificationContext, RequestContext};
+use rmcp::{Json, Peer, RoleServer, ServerHandler};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+use tracing::instrument;
 
 pub struct PdflensService {
     tool_router: ToolRouter<Self>,
-    roots: RwLock<Vec<Root>>,
+    roots: RwLock<Vec<PathBuf>>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ReadPdfParams {
-    pub filename: String,
-    pub page_from: u64,
-    pub page_to: u64,
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(title = "page_range")]
+pub struct PageRange {
+    #[schemars(description = "If omitted, starts from the beginning")]
+    pub from: Option<usize>,
+    #[schemars(description = "If omitted, stops at the end")]
+    pub to: Option<usize>,
 }
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(title = "pdf_get_num_pages")]
+pub struct PdfGetNumPagesParams {
+    #[schemars(
+        description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
+    )]
+    pub filename: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(title = "pdf_to_text")]
+pub struct PdfToTextParams {
+    #[schemars(
+        description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
+    )]
+    pub filename: String,
+    #[schemars(description = "A range of pages to load")]
+    pub page_range: Option<PageRange>,
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(title = "pdf_to_images")]
+pub struct PdfToImagesParams {
+    #[schemars(
+        description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
+    )]
+    pub filename: String,
+    #[schemars(description = "A range of pages to load")]
+    pub page_range: Option<PageRange>,
+    #[schemars(title = "Number of pixels on the longer side of the output image")]
+    pub image_dimension: u16,
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[repr(transparent)]
+#[schemars(title = "list_mcp_root_paths_results")]
+pub struct ListMcpRootPathsResults {
+    pub roots: Vec<PathBuf>,
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[repr(transparent)]
+#[schemars(title = "pdf_to_text_results")]
+pub struct PdfToTextResults(BTreeMap<usize, String>);
 
 #[rmcp::tool_router]
 impl PdflensService {
     pub fn new() -> Self {
         Self {
             tool_router: Self::tool_router(),
-            roots: RwLock::new(Vec::new()),
+            roots: RwLock::new(Vec::from_iter(std::env::current_dir().ok())),
         }
     }
 
     #[tracing::instrument(skip_all)]
     async fn update_roots(&self, peer: &Peer<RoleServer>) {
-        tracing::info!("Updating roots");
-        let Some(peer_info) = peer.peer_info() else {
-            return;
-        };
-        if peer_info.capabilities.roots.is_none() {
-            return;
-        }
+        static FILE_URI_REGEX: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new("(?is)^file:/{0,2}(.*)").unwrap());
+
         let roots = match peer.list_roots().await {
             Ok(roots) => roots.roots,
             Err(err) => {
-                tracing::error!("{}", err);
+                tracing::error!("Failed to request root paths, keeping the old list: {err}");
                 return;
             }
         };
-        tracing::info!("roots: {:?}", roots);
+        let mut roots = roots
+            .into_iter()
+            .filter_map(|root| {
+                FILE_URI_REGEX
+                    .captures(&root.uri)
+                    .map(|captures| PathBuf::from(&captures[1]))
+            })
+            .collect::<Vec<_>>();
+        for root in &mut roots {
+            if let Ok(path) = tokio::fs::canonicalize(&root).await {
+                *root = path;
+            }
+        }
         *self.roots.write().await = roots;
     }
 
-    #[rmcp::tool(description = "Convert PDF to text")]
-    pub async fn pdf_to_text(
+    #[rmcp::tool(
+        description = "Lists the current MCP root paths, which are usually the user’s workspace paths"
+    )]
+    pub async fn list_mcp_root_paths(
         &self,
-        Parameters(params): Parameters<ReadPdfParams>,
-    ) -> Result<CallToolResult, rmcp::ErrorData> {
-        todo!()
+    ) -> Result<Json<ListMcpRootPathsResults>, rmcp::ErrorData> {
+        Ok(self.list_mcp_root_paths_handler().await)
     }
 
-    #[rmcp::tool(description = "Convert PDF to images")]
+    #[rmcp::tool(description = "Gets the number of pages in a PDF")]
+    pub async fn pdf_get_num_pages(
+        &self,
+        Parameters(params): Parameters<PdfGetNumPagesParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.pdf_get_num_pages_handler(&params)
+            .await
+            .or_else(|err| {
+                tracing::error!("{err:?}");
+                Ok(CallToolResult::error(vec![
+                    Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
+                ]))
+            })
+    }
+
+    #[rmcp::tool(description = "Converts PDF to text", output_schema = rmcp::handler::server::tool::cached_schema_for_type::<PdfToTextResults>())]
+    pub async fn pdf_to_text(
+        &self,
+        Parameters(params): Parameters<PdfToTextParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.pdf_to_text_handler(&params).await.map_or_else(
+            |err| {
+                tracing::error!("{err:?}");
+                Ok(CallToolResult::error(vec![
+                    Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
+                ]))
+            },
+            |ok| ok.into_call_tool_result(),
+        )
+    }
+
+    #[rmcp::tool(
+        description = "Converts PDF to images. Please only use for pages of interest because it’s much slower than `pdf_to_text`."
+    )]
     pub async fn pdf_to_images(
         &self,
-        Parameters(params): Parameters<ReadPdfParams>,
+        Parameters(params): Parameters<PdfToImagesParams>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        todo!()
+        self.pdf_to_images_handler(&params, &context)
+            .await
+            .or_else(|err| {
+                tracing::error!("{err:?}");
+                Ok(CallToolResult::error(vec![
+                    Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
+                ]))
+            })
+    }
+
+    #[instrument(skip_all)]
+    async fn list_mcp_root_paths_handler(&self) -> Json<ListMcpRootPathsResults> {
+        Json(ListMcpRootPathsResults {
+            roots: self.roots.read().await.clone(),
+        })
+    }
+
+    #[instrument(skip_all)]
+    async fn load_file(&self, filename: &str) -> Result<Vec<u8>> {
+        static MAYBE_URI_REGEX: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new("(?s)^(?:([A-Za-z][0-9A-Za-z]*):/{0,2})?(.*)").unwrap());
+
+        let captures = MAYBE_URI_REGEX.captures(filename).unwrap();
+        if captures
+            .get(1)
+            .map(|m| m.as_str().eq_ignore_ascii_case("file"))
+            .unwrap_or(true)
+        {
+            let filename = &captures[2];
+            let roots = self.roots.read().await.clone();
+            let roots_hashset = HashSet::<_>::from_iter(roots.iter());
+
+            if filename.starts_with(&['/', '\\']) {
+                let path = match tokio::fs::canonicalize(filename).await {
+                    Ok(path) => path,
+                    Err(err) => {
+                        if err.kind() == std::io::ErrorKind::NotFound {
+                            bail!(std::io::Error::new(
+                                std::io::ErrorKind::NotFound,
+                                format!(
+                                    "File not found: {filename:?}\nUse `list_mcp_root_paths` to diagnose"
+                                )
+                            ));
+                        } else {
+                            bail!(err);
+                        }
+                    }
+                };
+                if !roots_hashset.into_iter().any(|root| path.starts_with(root)) {
+                    bail!(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!(
+                            "File isn’t within any MCP root paths: {path:?}\nUse `list_mcp_root_paths` to diagnose"
+                        )
+                    ))
+                }
+                let file_data = tokio::fs::read(path).await?;
+                return Ok(file_data);
+            } else {
+                for root in roots {
+                    let path = match tokio::fs::canonicalize(root.join(filename)).await {
+                        Ok(path) => path,
+                        Err(err) => {
+                            if err.kind() == std::io::ErrorKind::NotFound {
+                                continue;
+                            } else {
+                                bail!(err);
+                            }
+                        }
+                    };
+                    if !path.starts_with(root) {
+                        // Treat as not found
+                        continue;
+                    }
+                    let file_data = tokio::fs::read(path).await?;
+                    return Ok(file_data);
+                }
+            }
+        }
+
+        bail!(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("File not found: {filename:?}\nUse `list_mcp_root_paths` to diagnose")
+        ));
+    }
+
+    #[instrument(skip_all)]
+    async fn pdf_get_num_pages_handler(
+        &self,
+        params: &PdfGetNumPagesParams,
+    ) -> Result<CallToolResult> {
+        let file_data = Arc::new(self.load_file(&params.filename).await?);
+        let pdf = Pdf::new(file_data).map_err(|err| eyre!("Failed to load PDF: {err:?}"))?;
+        let num_pages = pdf.pages().len();
+        Ok(CallToolResult::success(vec![
+            Content::text(num_pages.to_string()).with_audience(vec![Role::Assistant]),
+        ]))
+    }
+
+    #[instrument(skip_all)]
+    async fn pdf_to_text_handler(
+        &self,
+        params: &PdfToTextParams,
+    ) -> Result<Json<PdfToTextResults>> {
+        let file_data = self.load_file(&params.filename).await?;
+        let text = extract_text_from_mem_by_pages(&file_data)?;
+
+        let from_page_idx = params
+            .page_range
+            .as_ref()
+            .and_then(|range| range.from)
+            .map(|x| x.saturating_sub(1).min(text.len()))
+            .unwrap_or_default();
+        let to_page_idx = params
+            .page_range
+            .as_ref()
+            .and_then(|range| range.to)
+            .map(|x| x.clamp(from_page_idx, text.len()))
+            .unwrap_or(text.len());
+
+        Ok(Json(PdfToTextResults(BTreeMap::from_iter(
+            text.into_iter()
+                .enumerate()
+                .take(to_page_idx)
+                .skip(from_page_idx)
+                .map(|(i, page)| (i + 1, page)),
+        ))))
+    }
+
+    #[instrument(skip_all)]
+    async fn pdf_to_images_handler(
+        &self,
+        params: &PdfToImagesParams,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<CallToolResult> {
+        let file_data = Arc::new(self.load_file(&params.filename).await?);
+        let pdf = hayro::Pdf::new(file_data).map_err(|err| eyre!("Failed to load PDF: {err:?}"))?;
+        let pages = pdf.pages();
+
+        // 0-based indices, half-closed half-open
+        let from_page_idx = params
+            .page_range
+            .as_ref()
+            .and_then(|range| range.from)
+            .map(|x| x.saturating_sub(1).min(pages.len()))
+            .unwrap_or_default();
+        let to_page_idx = params
+            .page_range
+            .as_ref()
+            .and_then(|range| range.to)
+            .map(|x| x.clamp(from_page_idx, pages.len()))
+            .unwrap_or(pages.len());
+        let num_pages = to_page_idx - from_page_idx;
+
+        let interpreter_settings = InterpreterSettings::default();
+
+        let progress_token = context.meta.get_progress_token();
+        let mut content = Vec::with_capacity(num_pages);
+        for (i, page) in pdf.pages()[from_page_idx..to_page_idx]
+            .into_iter()
+            .enumerate()
+            .take_while(|_| !context.ct.is_cancelled())
+        {
+            if let Some(progress_token) = &progress_token {
+                context
+                    .peer
+                    .notify_progress(ProgressNotificationParam {
+                        progress_token: progress_token.clone(),
+                        progress: i as f64,
+                        total: Some(num_pages as f64),
+                        message: None,
+                    })
+                    .await?;
+            };
+
+            let (orig_width, orig_height) = page.render_dimensions();
+            let render_settings = if orig_width >= orig_height {
+                let width = params.image_dimension.max(1);
+                let height = ((params.image_dimension as f64 * orig_height as f64
+                    / orig_width as f64)
+                    .round() as u16)
+                    .max(1);
+                RenderSettings {
+                    x_scale: width as f32 / orig_width as f32,
+                    y_scale: height as f32 / orig_height as f32,
+                    width: Some(width),
+                    height: Some(height),
+                }
+            } else {
+                let width = ((params.image_dimension as f64 * orig_width as f64
+                    / orig_height as f64)
+                    .round() as u16)
+                    .max(1);
+                let height = params.image_dimension.max(1);
+                RenderSettings {
+                    x_scale: width as f32 / orig_width as f32,
+                    y_scale: height as f32 / orig_height as f32,
+                    width: Some(width),
+                    height: Some(height),
+                }
+            };
+
+            let pixmap = hayro::render(&page, &interpreter_settings, &render_settings);
+            content.push(
+                Content::image(BASE64_STANDARD.encode(pixmap.take_png()), "image/png")
+                    .with_audience(vec![Role::Assistant]),
+            );
+        }
+
+        if let Some(progress_token) = &progress_token {
+            context
+                .peer
+                .notify_progress(ProgressNotificationParam {
+                    progress_token: progress_token.clone(),
+                    progress: num_pages as f64,
+                    total: Some(num_pages as f64),
+                    message: None,
+                })
+                .await?;
+        };
+
+        Ok(CallToolResult::success(content))
     }
 }
 
@@ -73,7 +395,7 @@ impl ServerHandler for PdflensService {
         tracing::info!("get_info");
         ServerInfo {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
-            instructions: Some("A tool to read PDF files".to_string()),
+            instructions: Some("A tool for reading PDF files".to_string()),
             ..Default::default()
         }
     }
