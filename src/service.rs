@@ -59,7 +59,7 @@ pub struct PdfToImagesParams {
     pub from_page: Option<usize>,
     #[schemars(description = "If omitted, reads until the end")]
     pub to_page: Option<usize>,
-    #[schemars(title = "Number of pixels on the longer side of the output image")]
+    #[schemars(description = "Number of pixels on the longer side of the output image")]
     pub image_dimension: u16,
 }
 
