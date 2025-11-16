@@ -272,7 +272,7 @@ impl PdflensService {
     #[instrument(skip_all)]
     async fn pdf_to_text_handler(&self, params: &PdfToTextParams) -> Result<CallToolResult> {
         let file_data = self.load_file(&params.filename).await?;
-        let text = extract_text_from_mem_by_pages(&file_data)?;
+        let mut text = extract_text_from_mem_by_pages(&file_data)?;
 
         let from_page_idx = params
             .from_page
@@ -283,19 +283,12 @@ impl PdflensService {
             .map(|x| x.clamp(from_page_idx, text.len()))
             .unwrap_or(text.len());
 
-        Ok(CallToolResult::success(
-            text.into_iter()
-                .enumerate()
-                .take(to_page_idx)
-                .skip(from_page_idx)
-                .map(|(i, mut page)| {
-                    if i + 1 != to_page_idx {
-                        page.push('\x0c');
-                    }
-                    Content::text(page).with_audience(vec![Role::Assistant])
-                })
-                .collect::<Vec<_>>(),
-        ))
+        text.truncate(to_page_idx);
+        text.drain(from_page_idx..);
+
+        Ok(CallToolResult::success(vec![
+            Content::text(text.join("\x0c")).with_audience(vec![Role::Assistant]),
+        ]))
     }
 
     #[instrument(skip_all)]
