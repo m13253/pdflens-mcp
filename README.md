@@ -6,8 +6,10 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 
 * `pdf_get_page_count`
 * `pdf_to_text`
-* `pdf_to_images`
+* `pdf_to_images`‡
 * `list_mcp_root_paths`
+
+‡ Not all MCP clients support images.
 
 ## Usage
 
