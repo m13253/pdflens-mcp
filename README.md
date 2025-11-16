@@ -53,7 +53,7 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 
         ```toml
         [mcp_servers.pdflens]
-        commane = "/path/to/pdflens-mcp/target/release/pdflens-mcp"
+        command = "/path/to/pdflens-mcp/target/release/pdflens-mcp"
         ```
 
 ## Path sandboxing
