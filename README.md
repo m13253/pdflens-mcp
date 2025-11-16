@@ -2,6 +2,8 @@
 
 An MCP server for reading PDFs, coded by human, designed for AI.
 
+![Screenshot](img/screenshot.png)
+
 ## Provided tools
 
 * `pdf_get_page_count`
