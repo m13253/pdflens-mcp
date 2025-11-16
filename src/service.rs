@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
@@ -7,7 +7,7 @@ use eyre::{Result, bail, eyre};
 use hayro::{InterpreterSettings, Pdf, RenderSettings};
 use pdf_extract::extract_text_from_mem_by_pages;
 use regex::Regex;
-use rmcp::handler::server::tool::{IntoCallToolResult, ToolRouter};
+use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
     CallToolResult, Content, ProgressNotificationParam, Role, ServerCapabilities, ServerInfo,
@@ -67,11 +67,6 @@ pub struct PdfToImagesParams {
 pub struct ListMcpRootPathsResults {
     pub roots: Vec<String>,
 }
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[repr(transparent)]
-#[schemars(title = "pdf_to_text_results")]
-pub struct PdfToTextResults(BTreeMap<usize, String>);
 
 #[rmcp::tool_router]
 impl PdflensService {
@@ -134,20 +129,19 @@ impl PdflensService {
             })
     }
 
-    #[rmcp::tool(description = "Converts PDF to text. If the PDF is large, please specify a page range", output_schema = rmcp::handler::server::tool::cached_schema_for_type::<PdfToTextResults>())]
+    #[rmcp::tool(
+        description = "Converts PDF to text. If the PDF is large, please specify a page range"
+    )]
     pub async fn pdf_to_text(
         &self,
         Parameters(params): Parameters<PdfToTextParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.pdf_to_text_handler(&params).await.map_or_else(
-            |err| {
-                tracing::error!("{err:?}");
-                Ok(CallToolResult::error(vec![
-                    Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
-                ]))
-            },
-            |ok| ok.into_call_tool_result(),
-        )
+        self.pdf_to_text_handler(&params).await.or_else(|err| {
+            tracing::error!("{err:?}");
+            Ok(CallToolResult::error(vec![
+                Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
+            ]))
+        })
     }
 
     #[rmcp::tool(
@@ -264,10 +258,7 @@ impl PdflensService {
     }
 
     #[instrument(skip_all)]
-    async fn pdf_to_text_handler(
-        &self,
-        params: &PdfToTextParams,
-    ) -> Result<Json<PdfToTextResults>> {
+    async fn pdf_to_text_handler(&self, params: &PdfToTextParams) -> Result<CallToolResult> {
         let file_data = self.load_file(&params.filename).await?;
         let text = extract_text_from_mem_by_pages(&file_data)?;
 
@@ -280,13 +271,19 @@ impl PdflensService {
             .map(|x| x.clamp(from_page_idx, text.len()))
             .unwrap_or(text.len());
 
-        Ok(Json(PdfToTextResults(BTreeMap::from_iter(
+        Ok(CallToolResult::success(
             text.into_iter()
                 .enumerate()
                 .take(to_page_idx)
                 .skip(from_page_idx)
-                .map(|(i, page)| (i + 1, page)),
-        ))))
+                .map(|(i, mut page)| {
+                    if i + 1 != to_page_idx {
+                        page.push('\x0c');
+                    }
+                    Content::text(page).with_audience(vec![Role::Assistant])
+                })
+                .collect::<Vec<_>>(),
+        ))
     }
 
     #[instrument(skip_all)]
