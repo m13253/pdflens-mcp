@@ -7,7 +7,7 @@ use base64::prelude::*;
 use eyre::{Result, bail, eyre};
 use hayro::{InterpreterSettings, Pdf, RenderSettings};
 use pdf_extract::extract_text_from_mem_by_pages;
-use percent_encoding::percent_decode_str;
+use percent_encoding::{AsciiSet, CONTROLS, percent_decode_str, utf8_percent_encode};
 use regex::Regex;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -171,13 +171,20 @@ impl PdflensService {
 
     #[instrument(skip_all)]
     async fn list_mcp_root_paths_handler(&self) -> Json<ListMcpRootPathsResults> {
+        const ESCAPE_SET: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'?');
+
         Json(ListMcpRootPathsResults {
             roots: self
                 .roots
                 .read()
                 .await
                 .iter()
-                .map(|path| format!("file://{}", path.to_string_lossy()))
+                .map(|path| {
+                    format!(
+                        "file://{}",
+                        utf8_percent_encode(&path.to_string_lossy(), ESCAPE_SET)
+                    )
+                })
                 .collect::<Vec<_>>(),
         })
     }
