@@ -65,7 +65,7 @@ pub struct PdfToImagesParams {
 #[repr(transparent)]
 #[schemars(title = "list_mcp_root_paths_results")]
 pub struct ListMcpRootPathsResults {
-    pub roots: Vec<PathBuf>,
+    pub roots: Vec<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
@@ -171,7 +171,13 @@ impl PdflensService {
     #[instrument(skip_all)]
     async fn list_mcp_root_paths_handler(&self) -> Json<ListMcpRootPathsResults> {
         Json(ListMcpRootPathsResults {
-            roots: self.roots.read().await.clone(),
+            roots: self
+                .roots
+                .read()
+                .await
+                .iter()
+                .map(|path| format!("file://{}", path.to_string_lossy()))
+                .collect::<Vec<_>>(),
         })
     }
 
