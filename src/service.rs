@@ -134,7 +134,7 @@ impl PdflensService {
             })
     }
 
-    #[rmcp::tool(description = "Converts PDF to text. Please specify a page range if PDF is very large", output_schema = rmcp::handler::server::tool::cached_schema_for_type::<PdfToTextResults>())]
+    #[rmcp::tool(description = "Converts PDF to text. If the PDF is large, please specify a page range", output_schema = rmcp::handler::server::tool::cached_schema_for_type::<PdfToTextResults>())]
     pub async fn pdf_to_text(
         &self,
         Parameters(params): Parameters<PdfToTextParams>,
