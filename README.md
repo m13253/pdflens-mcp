@@ -75,6 +75,8 @@ If your MCP client doesn’t specify a root path, pdflens will fallback to the c
 }
 ```
 
+In case if you need to diagnose MCP root paths, `list_mcp_root_paths` can be helpful.
+
 ## Not-vibe-coded declaration
 
-This project is developed mainly with human effort. A minimal amount of Large Language Model (LLMs) assistance is used only for integration tests, autocompletion of repetitive glue code, and English grammar checking.
+This project is developed mainly with human effort. A minimal amount of Large Language Model (LLMs) assistance is used only for integration tests, autocompletion of repetitive glue code, and English spell/grammar checking.
