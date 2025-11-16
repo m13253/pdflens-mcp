@@ -137,7 +137,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Converts PDF to text. If the PDF has a lot of pages, please specify a page range"
+        description = "Converts PDF to text. If the PDF has a lot of pages, reading less than hundreds of pages each time is recommended"
     )]
     pub async fn pdf_to_text(
         &self,
