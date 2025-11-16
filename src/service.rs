@@ -137,7 +137,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Converts PDF to text. If the PDF is large, please specify a page range"
+        description = "Converts PDF to text. If the PDF has a lot of pages, please specify a page range"
     )]
     pub async fn pdf_to_text(
         &self,
@@ -152,7 +152,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Converts PDF to images. Please only use for pages of interest because it’s much slower than `pdf_to_text`. This may fail if the user’s MCP client doesn’t support images"
+        description = "Converts PDF to images. Please only use for pages of interest because it’s much slower than `pdf_to_text`. `pdf_to_images` may fail if the user’s MCP client doesn’t support images"
     )]
     pub async fn pdf_to_images(
         &self,
