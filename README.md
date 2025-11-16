@@ -19,7 +19,7 @@ An MCP server for reading PDFs, coded by human, designed for AI.
     cargo build --release
     ```
 
-3.  Locate the built program file at `./target/release/pdflens-mcp`.
+3.  Locate the program file at `./target/release/pdflens-mcp`.
 
 4.  On your MCP client, add this MCP server.
 
