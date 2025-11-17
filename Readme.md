@@ -83,6 +83,4 @@ In case if you need to diagnose MCP root paths, `list_mcp_root_paths` can be hel
 
 ## Not-vibe-coded declaration
 
-This project is developed mainly with human effort. Only a minimal amount of Large Language Model (LLMs) assistance is used for integration tests, autocompletion of repetitive glue code, and English spell/grammar checking.
-
-I have throughoutly read and checked every piece of code in this repository to ensure its quality.
+This project is developed mainly with human effort. I have throughoutly read and checked every piece of code in this repository to ensure its quality.
