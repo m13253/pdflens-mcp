@@ -2,12 +2,12 @@
 name = "pdflens-mcp"
 version = "0.1.0"
 edition = "2024"
-description = "An MCP server for reading PDFs"
+description = "An MCP server for reading PDFs, coded by human, designed for AI."
 readme = "Readme.md"
 repository = "https://github.com/m13253/pdflens-mcp"
 license = "Apache-2.0"
 keywords = ["MCP", "LLM", "PDF", "AI", "model-context-protocol", "large-language-model", "artificial-intelligence"]
-categories = ["text-processing"]
+categories = ["text-processing", "multimedia"]
 include = [
     "src/*.rs",
     "Cargo.toml",
