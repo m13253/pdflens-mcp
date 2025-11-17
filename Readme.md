@@ -1,4 +1,8 @@
-# pdflens-mcp
+pdflens-mcp
+===========
+
+[![Download the crate from crates.io](https://img.shields.io/crates/v/pdflens-mcp)](https://crates.io/crates/pdflens-mcp)
+[![Read the documentation on docs.rs](https://img.shields.io/docsrs/pdflens-mcp)](https://docs.rs/pdflens-mcp)
 
 An MCP server for reading PDFs, coded by human, designed for AI.
 
@@ -17,15 +21,15 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 
 1.  Install Rust compiler: https://rustup.rs/
 
-2.  Compile the code:
+2.  Download and build pdflens-mcp from [crates.io](https://crates.io/crates/pdflens-mcp)
 
     ```bash
-    cargo build --release
+    cargo install pdflens-mcp
     ```
 
-3.  Locate the program file at `./target/release/pdflens-mcp`.
+    Usually, the program is installed to `$HOME/.cargo/bin/pdflens-mcp`. You can use `cargo install --root /another/path pdflens-mcp` to set a custom installation path.
 
-4.  Add this MCP server to your MCP client of choice.
+3.  Add this MCP server to your MCP client of choice.
 
     1. If your MCP client supports `mcp.json`:
 
@@ -33,7 +37,8 @@ An MCP server for reading PDFs, coded by human, designed for AI.
         {
           "mcpServers": {
             "pdflens": {
-              "command": "/path/to/pdflens-mcp/target/release/pdflens-mcp"
+              "command": "sh",
+              "args": ["-c", "exec ~/.cargo/bin/pdflens-mcp"]
             }
           }
         }
@@ -42,22 +47,26 @@ An MCP server for reading PDFs, coded by human, designed for AI.
     2. VS Code:
 
         ```bash
-        code --add-mcp "{\"name\": \"pdflens\", \"command\": \"/path/to/pdflens-mcp/target/release/pdflens-mcp\"}"
+        code --add-mcp "{\"name\": \"pdflens\", \"command\": \"sh\", \"args\": [\"-c\", \"exec ~/.cargo/bin/pdflens-mcp\"]}"
         ```
 
     3. Continue.dev
 
         ```yaml
         mcpServers:
-        - name: pdflens
-          command: /path/to/pdflens-mcp/target/release/pdflens-mcp
+          - name: pdflens
+            command: sh
+            args:
+              - -c
+              - exec ~/.cargo/bin/pdflens-mcp
         ```
 
     4. Codex
 
         ```toml
         [mcp_servers.pdflens]
-        command = "/path/to/pdflens-mcp/target/release/pdflens-mcp"
+        command = "sh"
+        args = ["-c", "exec ~/.cargo/bin/pdflens-mcp"]
         ```
 
 ## Path sandboxing
@@ -72,7 +81,8 @@ If your MCP client doesn’t specify a root path, pdflens will fallback to the c
 {
   "mcpServers": {
     "pdflens": {
-      "command": "/path/to/pdflens-mcp/target/release/pdflens-mcp",
+      "command": "sh",
+      "args": ["-c", "exec ~/.cargo/bin/pdflens-mcp"],
       "cwd": "/path/to/workspace/if/root/path/is/unsupported"
     }
   }
