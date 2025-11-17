@@ -394,7 +394,6 @@ impl PdflensService {
 impl ServerHandler for PdflensService {
     #[tracing::instrument(skip_all)]
     fn get_info(&self) -> ServerInfo {
-        tracing::info!("get_info");
         ServerInfo {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             instructions: Some("A tool for reading PDF files".to_string()),
