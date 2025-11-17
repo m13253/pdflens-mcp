@@ -2,7 +2,6 @@ pdflens-mcp
 ===========
 
 [![Download the crate from crates.io](https://img.shields.io/crates/v/pdflens-mcp)](https://crates.io/crates/pdflens-mcp)
-[![Read the documentation on docs.rs](https://img.shields.io/docsrs/pdflens-mcp)](https://docs.rs/pdflens-mcp)
 
 An MCP server for reading PDFs, coded by human, designed for AI.
 
