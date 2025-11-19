@@ -42,9 +42,9 @@ pub struct ReadPdfAsTextParams {
         description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
     )]
     pub filename: String,
-    #[schemars(description = "If omitted, reads from the beginning")]
+    #[schemars(description = "Omit if you want to read from the beginning")]
     pub from_page: Option<usize>,
-    #[schemars(description = "If omitted or larger than the total pages, reads until the end")]
+    #[schemars(description = "Omit if you want to read until the end")]
     pub to_page: Option<usize>,
 }
 
@@ -55,9 +55,9 @@ pub struct PdfToImagesParams {
         description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
     )]
     pub filename: String,
-    #[schemars(description = "If omitted, reads from the beginning")]
+    #[schemars(description = "Omit if you want to read from the beginning")]
     pub from_page: Option<usize>,
-    #[schemars(description = "If omitted or larger than the total pages, reads until the end")]
+    #[schemars(description = "Omit if you want to read until the end")]
     pub to_page: Option<usize>,
     #[schemars(description = "Number of pixels on the longer side of the output image")]
     pub image_dimension: u16,
@@ -137,7 +137,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Convert PDF to text for read. If the PDF is short, please read it in whole. If the PDF has thousands of pages, please successively use this tool every 10–100 pages. You decide the amount regarding your processing capabilities"
+        description = "Convert PDF to text for read. If the PDF is short, please read it in whole. If the PDF has ≥1000 pages, please successively use this tool every ≤100 pages of your choice"
     )]
     pub async fn read_pdf_as_text(
         &self,
