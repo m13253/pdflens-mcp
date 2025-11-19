@@ -137,7 +137,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Convert PDF to text for read. If the PDF is short, please read it in whole. If the PDF has ≥1000 pages, please successively use this tool every ≤100 pages of your choice"
+        description = "Convert PDF to text for reading. Only when longer than a thousand pages, read in ranges of every thousand pages, otherwise read it in full"
     )]
     pub async fn read_pdf_as_text(
         &self,
@@ -152,7 +152,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Convert PDF to images, to see a specific figure or the overall page layout. You need vision capabilities to use this tool. Please only use for pages of interest because it’s slower"
+        description = "Convert PDF to images, to see a specific figure or the overall page layout. You need vision capabilities to use this tool"
     )]
     pub async fn convert_pdf_to_images(
         &self,
