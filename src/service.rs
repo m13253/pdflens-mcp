@@ -27,8 +27,8 @@ pub struct PdflensService {
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(title = "pdf_get_page_count")]
-pub struct PdfGetPageCountParams {
+#[schemars(title = "get_pdf_num_pages")]
+pub struct GetPdfNumPagesParams {
     #[schemars(
         description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
     )]
@@ -36,7 +36,7 @@ pub struct PdfGetPageCountParams {
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(title = "pdf_to_text")]
+#[schemars(title = "read_pdf_as_text")]
 pub struct PdfToTextParams {
     #[schemars(
         description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
@@ -44,12 +44,12 @@ pub struct PdfToTextParams {
     pub filename: String,
     #[schemars(description = "If omitted, reads from the beginning")]
     pub from_page: Option<usize>,
-    #[schemars(description = "If omitted, reads until the end")]
+    #[schemars(description = "If omitted or larger than the total pages, reads until the end")]
     pub to_page: Option<usize>,
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(title = "pdf_to_images")]
+#[schemars(title = "read_pdf_as_images")]
 pub struct PdfToImagesParams {
     #[schemars(
         description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
@@ -57,7 +57,7 @@ pub struct PdfToImagesParams {
     pub filename: String,
     #[schemars(description = "If omitted, reads from the beginning")]
     pub from_page: Option<usize>,
-    #[schemars(description = "If omitted, reads until the end")]
+    #[schemars(description = "If omitted or larger than the total pages, reads until the end")]
     pub to_page: Option<usize>,
     #[schemars(description = "Number of pixels on the longer side of the output image")]
     pub image_dimension: u16,
@@ -113,7 +113,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Lists the current MCP root paths, which are usually the user’s workspace paths"
+        description = "Use this tool to diagnose file-not-found errors. MCP root paths are usually the user’s workspace paths"
     )]
     pub async fn list_mcp_root_paths(
         &self,
@@ -122,11 +122,11 @@ impl PdflensService {
     }
 
     #[rmcp::tool(description = "Gets the number of pages in a PDF")]
-    pub async fn pdf_get_page_count(
+    pub async fn get_pdf_num_pages(
         &self,
-        Parameters(params): Parameters<PdfGetPageCountParams>,
+        Parameters(params): Parameters<GetPdfNumPagesParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.pdf_get_page_count_handler(&params)
+        self.get_pdf_num_pages_handler(&params)
             .await
             .or_else(|err| {
                 tracing::error!("{err:?}");
@@ -137,13 +137,13 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Converts PDF to text. If the PDF has thousands of pages, you may read hundreds of pages at a time"
+        description = "Prefer this tool to read PDFs. If the PDF is short, please read it in whole. If the PDF has thousands of pages, please successively use this tool every 10–100 pages. You decide the amount regarding your processing capabilities"
     )]
-    pub async fn pdf_to_text(
+    pub async fn read_pdf_as_text(
         &self,
         Parameters(params): Parameters<PdfToTextParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.pdf_to_text_handler(&params).await.or_else(|err| {
+        self.read_pdf_as_text_handler(&params).await.or_else(|err: eyre::Error| {
             tracing::error!("{err:?}");
             Ok(CallToolResult::error(vec![
                 Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
@@ -152,14 +152,14 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Converts PDF to images. Please only use for pages of interest because it’s much slower than `pdf_to_text`. `pdf_to_images` may fail if the user’s MCP client doesn’t support images"
+        description = "Use this tool to understand the page layout or to see a specific figure. You need vision capabilities to use this tool. Please only use for pages of interest because it’s slower"
     )]
-    pub async fn pdf_to_images(
+    pub async fn read_pdf_as_images(
         &self,
         Parameters(params): Parameters<PdfToImagesParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.pdf_to_images_handler(&params, &context)
+        self.read_pdf_as_images_handler(&params, &context)
             .await
             .or_else(|err| {
                 tracing::error!("{err:?}");
@@ -264,9 +264,9 @@ impl PdflensService {
     }
 
     #[instrument(skip_all)]
-    async fn pdf_get_page_count_handler(
+    async fn get_pdf_num_pages_handler(
         &self,
-        params: &PdfGetPageCountParams,
+        params: &GetPdfNumPagesParams,
     ) -> Result<CallToolResult> {
         let file_data = Arc::new(self.load_file(&params.filename).await?);
         let pdf = Pdf::new(file_data).map_err(|err| eyre!("Failed to load PDF: {err:?}"))?;
@@ -277,7 +277,7 @@ impl PdflensService {
     }
 
     #[instrument(skip_all)]
-    async fn pdf_to_text_handler(&self, params: &PdfToTextParams) -> Result<CallToolResult> {
+    async fn read_pdf_as_text_handler(&self, params: &PdfToTextParams) -> Result<CallToolResult> {
         let file_data = self.load_file(&params.filename).await?;
         let mut text = extract_text_from_mem_by_pages(&file_data)?;
 
@@ -299,7 +299,7 @@ impl PdflensService {
     }
 
     #[instrument(skip_all)]
-    async fn pdf_to_images_handler(
+    async fn read_pdf_as_images_handler(
         &self,
         params: &PdfToImagesParams,
         context: &RequestContext<RoleServer>,
