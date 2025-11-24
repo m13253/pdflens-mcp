@@ -30,6 +30,8 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 
 3.  Add this MCP server to your MCP client of choice.
 
+    (Note: We use `sh` to expand `~` to your actual home directory. If you are using Microsoft Windows, please instead put the full path to `pdflens-mcp.exe` to `"command"` and leave `"args"` empty.)
+
     1. If your MCP client supports `mcp.json`:
 
         ```json
