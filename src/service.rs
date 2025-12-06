@@ -9,65 +9,26 @@ use hayro::{InterpreterSettings, Pdf, RenderSettings};
 use pdf_extract::extract_text_from_mem_by_pages;
 use percent_encoding::{AsciiSet, CONTROLS, percent_decode_str, utf8_percent_encode};
 use regex::Regex;
-use rmcp::handler::server::tool::ToolRouter;
+use rmcp::handler::server::tool::{IntoCallToolResult, ToolRouter, cached_schema_for_type};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, Content, ProgressNotificationParam, Role, ServerCapabilities, ServerInfo,
+    CallToolResult, Content, Implementation, ProgressNotificationParam, Role, ServerCapabilities,
+    ServerInfo,
 };
 use rmcp::service::{NotificationContext, RequestContext};
 use rmcp::{Json, Peer, RoleServer, ServerHandler};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+use tokio::task::spawn_blocking;
 use tracing::instrument;
+
+use crate::param::{
+    GetPdfNumPagesParams, GetPdfNumPagesResult, ListWorkspaceDirsResults, ReadPdfAsImagesParams,
+    ReadPdfAsTextParams,
+};
 
 pub struct PdflensService {
     tool_router: ToolRouter<Self>,
     roots: RwLock<Vec<PathBuf>>,
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(title = "get_pdf_num_pages")]
-pub struct GetPdfNumPagesParams {
-    #[schemars(
-        description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
-    )]
-    pub filename: String,
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(title = "read_pdf_as_text")]
-pub struct ReadPdfAsTextParams {
-    #[schemars(
-        description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
-    )]
-    pub filename: String,
-    #[schemars(description = "Omit if you want to read from the beginning")]
-    pub from_page: Option<usize>,
-    #[schemars(description = "Omit if you want to read until the end")]
-    pub to_page: Option<usize>,
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(title = "convert_pdf_to_images")]
-pub struct PdfToImagesParams {
-    #[schemars(
-        description = "Either an absolute path starting with file:/// or a path relative to any MCP root paths"
-    )]
-    pub filename: String,
-    #[schemars(description = "Omit if you want to read from the beginning")]
-    pub from_page: Option<usize>,
-    #[schemars(description = "Omit if you want to read until the end")]
-    pub to_page: Option<usize>,
-    #[schemars(description = "Number of pixels on the longer side of the output image")]
-    pub image_dimension: u16,
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[repr(transparent)]
-#[schemars(title = "list_mcp_root_paths_results")]
-pub struct ListMcpRootPathsResults {
-    pub roots: Vec<String>,
 }
 
 #[rmcp::tool_router]
@@ -113,22 +74,46 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "List MCP root paths. Use this tool to diagnose file-not-found errors. MCP root paths are usually the user’s workspace paths"
+        description = "List the user’s workspace directories, also known as MCP root directories.",
+        annotations(read_only_hint = true)
     )]
-    pub async fn list_mcp_root_paths(
+    pub async fn list_workspace_dirs(
         &self,
-    ) -> Result<Json<ListMcpRootPathsResults>, rmcp::ErrorData> {
-        Ok(self.list_mcp_root_paths_handler().await)
+    ) -> Result<Json<ListWorkspaceDirsResults>, rmcp::ErrorData> {
+        Ok(self.list_workspace_dirs_handler().await)
     }
 
-    #[rmcp::tool(description = "Get the number of pages in a PDF")]
+    #[rmcp::tool(
+        description = "Get the number of pages in a PDF.",
+        annotations(read_only_hint = true),
+        output_schema = cached_schema_for_type::<GetPdfNumPagesResult>()
+    )]
     pub async fn get_pdf_num_pages(
         &self,
         Parameters(params): Parameters<GetPdfNumPagesParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.get_pdf_num_pages_handler(&params)
+        self.get_pdf_num_pages_handler(&params).await.map_or_else(
+            |err| {
+                tracing::error!("{err:?}");
+                Ok(CallToolResult::error(vec![
+                    Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
+                ]))
+            },
+            |ok| ok.into_call_tool_result(),
+        )
+    }
+
+    #[rmcp::tool(
+        description = "Read a PDF in plain text format. The output separates each page with “\x0c” (U+000C). Performance recommendation: if numPages < 1000, omit `fromPage` and `toPage` to read the whole PDF; otherwise, read in chunks of 1000 pages.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn read_pdf_as_text(
+        &self,
+        Parameters(params): Parameters<ReadPdfAsTextParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.read_pdf_as_text_handler(&params)
             .await
-            .or_else(|err| {
+            .or_else(|err: eyre::Error| {
                 tracing::error!("{err:?}");
                 Ok(CallToolResult::error(vec![
                     Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
@@ -137,29 +122,15 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Convert PDF to text for reading. Only when longer than a thousand pages, read in ranges of every thousand pages, otherwise read it in full"
+        description = "Read pages of a PDF as images. The output contains one image per page. Performance recommendation: Only use this tool on specific pages after reading the text version.",
+        annotations(read_only_hint = true)
     )]
-    pub async fn read_pdf_as_text(
+    pub async fn read_pdf_as_images(
         &self,
-        Parameters(params): Parameters<ReadPdfAsTextParams>,
-    ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.read_pdf_as_text_handler(&params).await.or_else(|err: eyre::Error| {
-            tracing::error!("{err:?}");
-            Ok(CallToolResult::error(vec![
-                Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
-            ]))
-        })
-    }
-
-    #[rmcp::tool(
-        description = "Convert PDF to images, to see a specific figure or the overall page layout. You need vision capabilities to use this tool"
-    )]
-    pub async fn convert_pdf_to_images(
-        &self,
-        Parameters(params): Parameters<PdfToImagesParams>,
+        Parameters(params): Parameters<ReadPdfAsImagesParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.convert_pdf_to_images_handler(&params, &context)
+        self.read_pdf_as_images_handler(&params, &context)
             .await
             .or_else(|err| {
                 tracing::error!("{err:?}");
@@ -170,11 +141,11 @@ impl PdflensService {
     }
 
     #[instrument(skip_all)]
-    async fn list_mcp_root_paths_handler(&self) -> Json<ListMcpRootPathsResults> {
+    async fn list_workspace_dirs_handler(&self) -> Json<ListWorkspaceDirsResults> {
         const ESCAPE_SET: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'?');
 
-        Json(ListMcpRootPathsResults {
-            roots: self
+        Json(ListWorkspaceDirsResults {
+            dirs: self
                 .roots
                 .read()
                 .await
@@ -201,7 +172,9 @@ impl PdflensService {
             } else {
                 bail!(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("File not found: {uri:?}\nUse `list_mcp_root_paths` to diagnose")
+                    format!(
+                        "Invalid file path: {uri:?}\nAbsolute paths start with `file:///`. Relative paths are relative to the root of any opened workspaces."
+                    )
                 ));
             }
         } else {
@@ -219,7 +192,7 @@ impl PdflensService {
                         bail!(std::io::Error::new(
                             std::io::ErrorKind::NotFound,
                             format!(
-                                "File not found: {filename:?}\nUse `list_mcp_root_paths` to diagnose"
+                                "File not found: {uri:?}\nPlease use folder browsing tools to confirm the correct path."
                             )
                         ));
                     } else {
@@ -231,7 +204,7 @@ impl PdflensService {
                 bail!(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     format!(
-                        "File isn’t within any MCP root paths: {path:?}\nUse `list_mcp_root_paths` to diagnose"
+                        "Access is denied, because the file is outside the user’s workspace directories: {path:?}\nUse `list_workspace_dirs` to show current workspace directories."
                     )
                 ))
             }
@@ -258,7 +231,9 @@ impl PdflensService {
             }
             bail!(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("File not found: {uri:?}\nUse `list_mcp_root_paths` to diagnose")
+                format!(
+                    "File not found: {uri:?}\nPlease use folder browsing tools to confirm the correct path. Relative paths are searched from the workspace directories listed in `list_workspace_dirs`."
+                )
             ));
         }
     }
@@ -267,64 +242,67 @@ impl PdflensService {
     async fn get_pdf_num_pages_handler(
         &self,
         params: &GetPdfNumPagesParams,
-    ) -> Result<CallToolResult> {
-        let file_data = Arc::new(self.load_file(&params.filename).await?);
-        let pdf = Pdf::new(file_data).map_err(|err| eyre!("Failed to load PDF: {err:?}"))?;
-        let page_count = pdf.pages().len();
-        Ok(CallToolResult::success(vec![
-            Content::text(page_count.to_string()).with_audience(vec![Role::Assistant]),
-        ]))
+    ) -> Result<Json<GetPdfNumPagesResult>> {
+        let file_data = Arc::new(self.load_file(&params.path).await?);
+        let pdf = spawn_blocking(|| {
+            Pdf::new(file_data).map_err(|err| eyre!("Failed to load PDF: {err:?}"))
+        })
+        .await??;
+        let num_pages = pdf.pages().len();
+        Ok(Json(GetPdfNumPagesResult { num_pages }))
     }
 
     #[instrument(skip_all)]
-    async fn read_pdf_as_text_handler(&self, params: &ReadPdfAsTextParams) -> Result<CallToolResult> {
-        let file_data = self.load_file(&params.filename).await?;
-        let mut text = extract_text_from_mem_by_pages(&file_data)?;
+    async fn read_pdf_as_text_handler(
+        &self,
+        params: &ReadPdfAsTextParams,
+    ) -> Result<CallToolResult> {
+        let file_data = self.load_file(&params.path).await?;
+        let mut pages =
+            spawn_blocking(move || extract_text_from_mem_by_pages(&file_data)).await??;
 
-        let from_page_idx = params
-            .from_page
-            .map(|x| x.saturating_sub(1).min(text.len()))
-            .unwrap_or_default();
+        // Convert to 0-based, half-closed half-open indices
+        let num_pages = pages.len();
+        let from_page_idx = params.from_page.saturating_sub(1).min(num_pages);
         let to_page_idx = params
             .to_page
-            .map(|x| x.clamp(from_page_idx, text.len()))
-            .unwrap_or(text.len());
+            .map(|x| x.clamp(from_page_idx, num_pages))
+            .unwrap_or(num_pages);
 
-        text.truncate(to_page_idx);
-        text.drain(..from_page_idx);
+        pages.truncate(to_page_idx);
+        pages.drain(..from_page_idx);
 
         Ok(CallToolResult::success(vec![
-            Content::text(text.join("\x0c")).with_audience(vec![Role::Assistant]),
+            Content::text(pages.join("\x0c")).with_audience(vec![Role::Assistant]),
         ]))
     }
 
     #[instrument(skip_all)]
-    async fn convert_pdf_to_images_handler(
+    async fn read_pdf_as_images_handler(
         &self,
-        params: &PdfToImagesParams,
+        params: &ReadPdfAsImagesParams,
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult> {
-        let file_data = Arc::new(self.load_file(&params.filename).await?);
-        let pdf = hayro::Pdf::new(file_data).map_err(|err| eyre!("Failed to load PDF: {err:?}"))?;
-        let pages = pdf.pages();
+        let file_data = Arc::new(self.load_file(&params.path).await?);
+        let pdf = spawn_blocking(|| match hayro::Pdf::new(file_data) {
+            Ok(ok) => Ok(Arc::new(ok)),
+            Err(err) => bail!("Failed to load PDF: {err:?}"),
+        })
+        .await??;
+        let interpreter_settings = InterpreterSettings::default();
 
-        // 0-based indices, half-closed half-open
-        let from_page_idx = params
-            .from_page
-            .map(|x| x.saturating_sub(1).min(pages.len()))
-            .unwrap_or_default();
+        // Convert to 0-based, half-closed half-open indices
+        let num_pages = pdf.pages().len();
+        let from_page_idx = params.from_page.saturating_sub(1).min(num_pages);
         let to_page_idx = params
             .to_page
-            .map(|x| x.clamp(from_page_idx, pages.len()))
-            .unwrap_or(pages.len());
+            .map(|x| x.clamp(from_page_idx, num_pages))
+            .unwrap_or(num_pages);
         let page_count = to_page_idx - from_page_idx;
-
-        let interpreter_settings = InterpreterSettings::default();
 
         let progress_token = context.meta.get_progress_token();
         let mut content = Vec::with_capacity(page_count);
-        for (i, page) in pdf.pages()[from_page_idx..to_page_idx]
-            .into_iter()
+        for (i, page_idx) in (from_page_idx..to_page_idx)
             .enumerate()
             .take_while(|_| !context.ct.is_cancelled())
         {
@@ -340,38 +318,45 @@ impl PdflensService {
                     .await?;
             };
 
-            let (orig_width, orig_height) = page.render_dimensions();
-            let render_settings = if orig_width >= orig_height {
-                let width = params.image_dimension.max(1);
-                let height = ((params.image_dimension as f64 * orig_height as f64
-                    / orig_width as f64)
-                    .round() as u16)
-                    .max(1);
-                RenderSettings {
-                    x_scale: width as f32 / orig_width as f32,
-                    y_scale: height as f32 / orig_height as f32,
-                    width: Some(width),
-                    height: Some(height),
-                }
-            } else {
-                let width = ((params.image_dimension as f64 * orig_width as f64
-                    / orig_height as f64)
-                    .round() as u16)
-                    .max(1);
-                let height = params.image_dimension.max(1);
-                RenderSettings {
-                    x_scale: width as f32 / orig_width as f32,
-                    y_scale: height as f32 / orig_height as f32,
-                    width: Some(width),
-                    height: Some(height),
-                }
-            };
+            let pdf = pdf.clone();
+            let image_dimension = params.image_dimension;
+            let interpreter_settings = interpreter_settings.clone();
 
-            let pixmap = hayro::render(&page, &interpreter_settings, &render_settings);
-            content.push(
-                Content::image(BASE64_STANDARD.encode(pixmap.take_png()), "image/png")
-                    .with_audience(vec![Role::Assistant]),
-            );
+            let image = spawn_blocking(move || {
+                let page = &pdf.pages()[page_idx];
+
+                let (orig_width, orig_height) = page.render_dimensions();
+                let render_settings = if orig_width >= orig_height {
+                    let width = image_dimension.max(1);
+                    let height = ((image_dimension as f64 * orig_height as f64 / orig_width as f64)
+                        .round() as u16)
+                        .max(1);
+                    RenderSettings {
+                        x_scale: width as f32 / orig_width as f32,
+                        y_scale: height as f32 / orig_height as f32,
+                        width: Some(width),
+                        height: Some(height),
+                    }
+                } else {
+                    let width = ((image_dimension as f64 * orig_width as f64 / orig_height as f64)
+                        .round() as u16)
+                        .max(1);
+                    let height = image_dimension.max(1);
+                    RenderSettings {
+                        x_scale: width as f32 / orig_width as f32,
+                        y_scale: height as f32 / orig_height as f32,
+                        width: Some(width),
+                        height: Some(height),
+                    }
+                };
+
+                BASE64_STANDARD.encode(
+                    hayro::render(&page, &interpreter_settings, &render_settings).take_png(),
+                )
+            })
+            .await?;
+
+            content.push(Content::image(image, "image/png").with_audience(vec![Role::Assistant]));
         }
 
         if let Some(progress_token) = &progress_token {
@@ -396,7 +381,14 @@ impl ServerHandler for PdflensService {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
-            instructions: Some("A tool for reading PDF files".to_string()),
+            server_info: Implementation {
+                name: "pdflens".to_owned(),
+                title: Some("pdflens".to_owned()),
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                website_url: Some("https://github.com/m13253/pdflens-mcp".to_owned()),
+                ..Default::default()
+            },
+            instructions: Some("A tool for reading PDF files".to_owned()),
             ..Default::default()
         }
     }

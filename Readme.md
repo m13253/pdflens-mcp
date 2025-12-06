@@ -10,9 +10,9 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 ## Provided tools
 
 * `get_pdf_num_pages`
+* `list_workspace_dirs`
 * `read_pdf_as_text`
-* `convert_pdf_to_images`‡
-* `list_mcp_root_paths`
+* `read_pdf_as_images`‡
 
 ‡ Not all MCP clients support images.
 
@@ -45,7 +45,7 @@ An MCP server for reading PDFs, coded by human, designed for AI.
         }
         ```
 
-    2. VS Code:
+    2. Visual Studio Code:
 
         ```bash
         code --add-mcp "{\"name\": \"pdflens\", \"command\": \"sh\", \"args\": [\"-c\", \"exec ~/.cargo/bin/pdflens-mcp\"]}"
@@ -72,9 +72,9 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 
 ## Path sandboxing
 
-Pdflens is designed to only read PDFs located within the MCP root paths, which is usually the user’s workspace.
+Pdflens is designed to only read PDFs located within the user’s workspace directories, also called MCP root directories.
 
-Each time before reading the PDFs, it checks the file path after resolving any symbolic links. If the PDF exists but is outside any MCP root paths, pdflens will return an error, asking the user to check the root path settings.
+Each time before reading the PDFs, it checks the file path after resolving any symbolic links. If the PDF exists but is outside any user’s workspace directories, pdflens will return an error, asking the user to check the root path settings.
 
 If your MCP client doesn’t specify a root path, pdflens will fallback to the current directory it is started in.
 
@@ -90,7 +90,7 @@ If your MCP client doesn’t specify a root path, pdflens will fallback to the c
 }
 ```
 
-In case if you need to diagnose MCP root paths, `list_mcp_root_paths` can be helpful.
+In case if you need to diagnose user’s workspace directories, `list_workspace_dirs` can be helpful.
 
 ## Not-vibe-coded declaration
 
