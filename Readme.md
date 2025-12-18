@@ -89,6 +89,10 @@ If your MCP client doesn’t specify a root path, pdflens will fallback to the c
 }
 ```
 
+## Known issue
+
+1. pdflens uses [pdf-extract](https://github.com/jrmuizel/pdf-extract) to extract text from PDFs. It is not perfect and may crash with some PDFs. I am waiting for a new feature that is recently added into [hayro#457](https://github.com/LaurenzV/hayro/pull/457) to release. Switching the extraction library to hayro will hopefully support more PDFs.
+
 ## Not-vibe-coded declaration
 
 This project is developed mainly with human effort. I have throughoutly read and checked every piece of code in this repository to ensure its quality.
