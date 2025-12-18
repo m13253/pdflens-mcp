@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 #[schemars(title = "pdflens_get_pdf_num_pages")]
 pub struct GetPdfNumPagesParams {
     #[schemars(
-        description = "Absolute paths should start with file:///, Relative paths are relative to the root of any of the user’s current workspace directories.",
+        description = "Absolute paths should start with `file:///`. Relative paths are relative to any of the user’s current workspace directories.",
         example = "file:///home/user/Documents/workspace/document.pdf",
+        example = "file:///C:/Users/Admin/Documents/workspace/document.pdf",
         example = "./document.pdf"
     )]
     pub path: String,
@@ -19,8 +20,9 @@ pub struct GetPdfNumPagesParams {
 #[schemars(title = "pdflens_read_pdf_as_images")]
 pub struct ReadPdfAsImagesParams {
     #[schemars(
-        description = "Absolute paths should start with file:///, Relative paths are relative to the root of any of the user’s current workspace directories.",
+        description = "Absolute paths should start with `file:///`. Relative paths are relative to any of the user’s current workspace directories.",
         example = "file:///home/user/Documents/workspace/document.pdf",
+        example = "file:///C:/Users/Admin/Documents/workspace/document.pdf",
         example = "./document.pdf"
     )]
     pub path: String,
@@ -43,8 +45,9 @@ pub struct ReadPdfAsImagesParams {
 #[schemars(title = "pdflens_read_pdf_as_text")]
 pub struct ReadPdfAsTextParams {
     #[schemars(
-        description = "Relative paths are relative to the root of any opened workspaces.",
+        description = "Absolute paths should start with `file:///`. Relative paths are relative to any of the user’s current workspace directories.",
         example = "file:///home/user/Documents/workspace/document.pdf",
+        example = "file:///C:/Users/Admin/Documents/workspace/document.pdf",
         example = "./document.pdf"
     )]
     pub path: String,
@@ -60,8 +63,9 @@ pub struct ReadPdfAsTextParams {
 #[schemars(title = "pdflens_read_pdf_page_as_image")]
 pub struct ReadPdfPageAsImageParams {
     #[schemars(
-        description = "Relative paths are relative to the root of any opened workspaces.",
+        description = "Absolute paths should start with `file:///`. Relative paths are relative to any of the user’s current workspace directories.",
         example = "file:///home/user/Documents/workspace/document.pdf",
+        example = "file:///C:/Users/Admin/Documents/workspace/document.pdf",
         example = "./document.pdf"
     )]
     pub path: String,

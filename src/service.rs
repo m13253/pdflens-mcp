@@ -357,8 +357,9 @@ impl PdflensService {
         })
         .await??;
 
-        let content = Content::image(image, "image/png").with_audience(vec![Role::Assistant]);
-        Ok(CallToolResult::success(vec![content]))
+        Ok(CallToolResult::success(vec![
+            Content::image(image, "image/png").with_audience(vec![Role::Assistant]),
+        ]))
     }
 }
 
