@@ -78,16 +78,13 @@ impl PdflensService {
     #[instrument(skip_all)]
     fn format_roots_as_uri(&self, roots: &[PathBuf]) -> String {
         let mut builder = String::new();
-        for uri in roots
-            .iter()
-            .map(|path| Url::from_directory_path(path).unwrap())
-        {
-            if builder.is_empty() {
-                builder.push_str("* ");
+        for root in roots {
+            builder.push_str(if builder.is_empty() { "* " } else { "\n* " });
+            if let Ok(uri) = Url::from_directory_path(root) {
+                builder.push_str(uri.as_str());
             } else {
-                builder.push_str("\n* ");
+                builder.push_str(&root.to_string_lossy());
             }
-            builder.push_str(uri.as_str());
         }
         builder
     }
