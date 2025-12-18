@@ -126,12 +126,12 @@ impl PdflensService {
                 bail!(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     format!(
-                        "Access denied: {real_path:?}\nThe file is outside the user’s current workspace directories:\n{}",
+                        "Access denied: {uri:?}\nThe file is outside the user’s current workspace directories:\n{}",
                         self.format_roots_as_uri(&roots)
                     )
                 ))
             }
-            let file_data = tokio::fs::read(path).await?;
+            let file_data = tokio::fs::read(real_path).await?;
             Ok(file_data)
         } else {
             for root in &roots {
@@ -155,7 +155,7 @@ impl PdflensService {
             bail!(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!(
-                    "File not found: {path:?}\nPlease check the directory listing to confirm the correct path. The path should be either absolute or relative to any of the user’s current workspace directories:\n{}",
+                    "File not found: {uri:?}\nPlease check the directory listing to confirm the correct path. The path should be either absolute or relative to any of the user’s current workspace directories:\n{}",
                     self.format_roots_as_uri(&roots)
                 )
             ));
