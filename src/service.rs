@@ -421,7 +421,7 @@ impl PdflensService {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.read_pdf_as_text_handler(&params)
             .await
-            .or_else(|err: eyre::Error| {
+            .or_else(|err| {
                 tracing::error!("{err:?}");
                 Ok(CallToolResult::error(vec![
                     Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
