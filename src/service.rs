@@ -155,8 +155,7 @@ impl PdflensService {
             bail!(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!(
-                    "File not found: {:?}\nPlease check the directory listing to confirm the correct path. The path should be either absolute or relative to any of the user’s current workspace directories:\n{}",
-                    path,
+                    "File not found: {path:?}\nPlease check the directory listing to confirm the correct path. The path should be either absolute or relative to any of the user’s current workspace directories:\n{}",
                     self.format_roots_as_uri(&roots)
                 )
             ));
