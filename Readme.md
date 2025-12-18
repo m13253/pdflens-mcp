@@ -10,9 +10,8 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 ## Provided tools
 
 * `get_pdf_num_pages`
-* `list_workspace_dirs`
 * `read_pdf_as_text`
-* `read_pdf_as_images`‡
+* `read_pdf_page_as_image`‡
 
 ‡ Not all MCP clients support images.
 
@@ -89,8 +88,6 @@ If your MCP client doesn’t specify a root path, pdflens will fallback to the c
   }
 }
 ```
-
-In case if you need to diagnose user’s workspace directories, `list_workspace_dirs` can be helpful.
 
 ## Not-vibe-coded declaration
 
