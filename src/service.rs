@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -123,10 +124,16 @@ impl PdflensService {
                 .into_iter()
                 .any(|root| real_path.starts_with(root))
             {
+                let real_path_uri = Url::from_file_path(&real_path);
+                let real_path_str = if let Ok(uri) = &real_path_uri {
+                    Cow::from(uri.as_str())
+                } else {
+                    real_path.to_string_lossy()
+                };
                 bail!(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     format!(
-                        "Access denied: {uri:?}\nThe file is outside the user’s current workspace directories:\n{}",
+                        "Access denied: {real_path_str:?}\nThe file is outside the user’s current workspace directories:\n{}",
                         self.format_roots_as_uri(&roots)
                     )
                 ))
@@ -155,7 +162,7 @@ impl PdflensService {
             bail!(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!(
-                    "File not found: {uri:?}\nPlease check the directory listing to confirm the correct path. The path should be either absolute or relative to any of the user’s current workspace directories:\n{}",
+                    "File not found: {path:?}\nPlease check the directory listing to confirm the correct path. The path should be either absolute or relative to any of the user’s current workspace directories:\n{}",
                     self.format_roots_as_uri(&roots)
                 )
             ));
