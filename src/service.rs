@@ -1,11 +1,11 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use base64::prelude::*;
 use eyre::{Result, bail, eyre};
 use hayro::{InterpreterSettings, Pdf, RenderSettings};
+use indexmap::IndexSet;
 use pdf_extract::extract_text_from_mem_by_pages;
 use rmcp::handler::server::tool::{IntoCallToolResult, ToolRouter, cached_schema_for_type};
 use rmcp::handler::server::wrapper::Parameters;
@@ -13,9 +13,8 @@ use rmcp::model::{
     CallToolResult, Content, Implementation, ProgressNotificationParam, Role, ServerCapabilities,
     ServerInfo,
 };
-use rmcp::service::{NotificationContext, RequestContext};
+use rmcp::service::RequestContext;
 use rmcp::{Json, Peer, RoleServer, ServerHandler};
-use tokio::sync::RwLock;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 use url::Url;
@@ -27,70 +26,116 @@ use crate::param::{
 
 pub struct PdflensService {
     tool_router: ToolRouter<Self>,
-    roots: RwLock<Vec<PathBuf>>,
 }
 
 impl PdflensService {
     pub fn new() -> Self {
         Self {
             tool_router: Self::tool_router(),
-            roots: RwLock::new(Vec::from_iter(
-                std::env::current_dir()
-                    .ok()
-                    .map(|path| std::fs::canonicalize(&path).unwrap_or(path)),
-            )),
         }
     }
 
     #[tracing::instrument(skip_all)]
-    async fn update_roots(&self, peer: &Peer<RoleServer>) {
-        let roots = match peer.list_roots().await {
+    pub async fn get_roots(peer: &Peer<RoleServer>) -> IndexSet<PathBuf> {
+        if !peer
+            .peer_info()
+            .map(|peer_info| peer_info.capabilities.roots.is_some())
+            .unwrap_or_default()
+        {
+            let roots = Self::get_roots_fallback().await;
+            tracing::warn!(
+                "MCP client does not support root path capability, falling back to current working directory: {roots:?}"
+            );
+            return roots;
+        }
+
+        let uris = match peer.list_roots().await {
             Ok(roots) => roots.roots,
             Err(err) => {
-                tracing::error!("Failed to request root paths, keeping the old list: {err}");
-                return;
+                let roots = Self::get_roots_fallback().await;
+                tracing::error!(
+                    "Failed to request root paths: {err}. Falling back to current working directory: {roots:?}"
+                );
+                return roots;
             }
         };
-        let mut roots = roots
-            .into_iter()
-            .filter_map(|root| {
-                let path = Url::parse(&root.uri)
-                    .ok()
-                    .filter(|uri| uri.scheme().eq_ignore_ascii_case("file"))
-                    .and_then(|uri| uri.to_file_path().ok());
-                if path.is_none() {
-                    tracing::error!("Invalid MCP root path: {:?}", root.uri);
+        tracing::info!("MCP root URIs: {uris:?}");
+
+        let mut roots = IndexSet::new();
+        for root in uris {
+            let Some(path) = Url::parse(&root.uri)
+                .ok()
+                .filter(|uri| uri.scheme().eq_ignore_ascii_case("file"))
+                .and_then(|uri| uri.to_file_path().ok())
+            else {
+                tracing::error!("Ignored invalid MCP root path: {:?}", root.uri);
+                continue;
+            };
+            roots.insert(match tokio::fs::canonicalize(&path).await {
+                Ok(path) => {
+                    tracing::info!("Resolved MCP root path: {:?} → {path:?}", root.uri);
+                    path
                 }
-                path
-            })
-            .collect::<Vec<_>>();
+                Err(err) => {
+                    tracing::error!(
+                        "Failed to resolve MCP root path, keeping as is: {:?} → {err}",
+                        root.uri
+                    );
+                    path
+                }
+            });
+        }
         if roots.is_empty() {
-            tracing::error!("MCP client returned no valid root paths, keeping the old list.");
+            let roots = Self::get_roots_fallback().await;
+            tracing::error!(
+                "MCP client returned no valid root paths, Falling back to current working directory: {roots:?}"
+            );
+            return roots;
         }
-        for root in &mut roots {
-            if let Ok(path) = tokio::fs::canonicalize(&root).await {
-                *root = path;
-            }
+
+        tracing::info!("MCP root paths: {roots:?}");
+        roots
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn get_roots_fallback() -> IndexSet<PathBuf> {
+        if let Ok(cwd) = std::env::current_dir() {
+            IndexSet::from([match tokio::fs::canonicalize(&cwd).await {
+                Ok(path) => {
+                    tracing::info!("Resolved MCP root path: {cwd:?} → {path:?}");
+                    path
+                }
+                Err(err) => {
+                    tracing::error!(
+                        "Failed to resolve MCP root path, keeping as is: {cwd:?} → {err}",
+                    );
+                    cwd
+                }
+            }])
+        } else {
+            IndexSet::new()
         }
-        *self.roots.write().await = roots;
     }
 
     #[instrument(skip_all)]
-    fn format_roots_as_uri(&self, roots: &[PathBuf]) -> String {
+    fn format_roots_as_uri(roots: impl IntoIterator<Item = impl AsRef<Path>>) -> String {
         let mut builder = String::new();
         for root in roots {
             builder.push_str(if builder.is_empty() { "* " } else { "\n* " });
-            if let Ok(uri) = Url::from_directory_path(root) {
+            if let Ok(uri) = Url::from_directory_path(&root) {
                 builder.push_str(uri.as_str());
             } else {
-                builder.push_str(&root.to_string_lossy());
+                builder.push_str(&root.as_ref().to_string_lossy());
             }
+        }
+        if builder.is_empty() {
+            return "(empty)".to_owned();
         }
         builder
     }
 
     #[instrument(skip_all)]
-    async fn load_file(&self, uri: &str) -> Result<Vec<u8>> {
+    async fn load_file(&self, uri: &str, peer: &Peer<RoleServer>) -> Result<Vec<u8>> {
         let parse_as_uri = Url::parse(uri)
             .ok()
             .filter(|uri| uri.scheme().eq_ignore_ascii_case("file"))
@@ -98,8 +143,7 @@ impl PdflensService {
         let parse_as_path = Path::new(uri);
         let path = parse_as_uri.as_deref().unwrap_or(parse_as_path);
 
-        let roots = self.roots.read().await.clone();
-        let roots_hashset = HashSet::<_>::from_iter(roots.iter());
+        let roots = Self::get_roots(peer).await;
 
         if parse_as_uri.is_some() || path.is_absolute() {
             let real_path = match tokio::fs::canonicalize(path).await {
@@ -117,10 +161,7 @@ impl PdflensService {
                     }
                 }
             };
-            if !roots_hashset
-                .into_iter()
-                .any(|root| real_path.starts_with(root))
-            {
+            if !roots.iter().any(|root| real_path.starts_with(root)) {
                 let real_path_uri = Url::from_file_path(&real_path);
                 let real_path_str = if let Ok(uri) = &real_path_uri {
                     Cow::from(uri.as_str())
@@ -131,7 +172,7 @@ impl PdflensService {
                     std::io::ErrorKind::PermissionDenied,
                     format!(
                         "Access denied: {real_path_str:?}\nThe file is outside the user’s current workspace directories:\n{}",
-                        self.format_roots_as_uri(&roots)
+                        Self::format_roots_as_uri(roots)
                     )
                 ))
             }
@@ -160,7 +201,7 @@ impl PdflensService {
                 std::io::ErrorKind::NotFound,
                 format!(
                     "File not found: {path:?}\nPlease check the directory listing to confirm the correct path. The path should be either absolute or relative to any of the user’s current workspace directories:\n{}",
-                    self.format_roots_as_uri(&roots)
+                    Self::format_roots_as_uri(roots)
                 )
             ));
         }
@@ -169,9 +210,10 @@ impl PdflensService {
     #[instrument(skip_all)]
     async fn get_pdf_num_pages_handler(
         &self,
-        params: &GetPdfNumPagesParams,
+        params: GetPdfNumPagesParams,
+        context: RequestContext<RoleServer>,
     ) -> Result<Json<GetPdfNumPagesResult>> {
-        let file_data = Arc::new(self.load_file(&params.path).await?);
+        let file_data = Arc::new(self.load_file(&params.path, &context.peer).await?);
         let pdf = spawn_blocking(|| {
             Pdf::new(file_data).map_err(|err| eyre!("Failed to load PDF: {err:?}"))
         })
@@ -184,10 +226,10 @@ impl PdflensService {
     #[instrument(skip_all)]
     async fn read_pdf_as_images_handler(
         &self,
-        params: &ReadPdfAsImagesParams,
-        context: &RequestContext<RoleServer>,
+        params: ReadPdfAsImagesParams,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult> {
-        let file_data = Arc::new(self.load_file(&params.path).await?);
+        let file_data = Arc::new(self.load_file(&params.path, &context.peer).await?);
         let pdf = spawn_blocking(|| match hayro::Pdf::new(file_data) {
             Ok(ok) => Ok(Arc::new(ok)),
             Err(err) => bail!("Failed to load PDF: {err:?}"),
@@ -254,9 +296,8 @@ impl PdflensService {
                     }
                 };
 
-                BASE64_STANDARD.encode(
-                    hayro::render(page, &interpreter_settings, &render_settings).take_png(),
-                )
+                BASE64_STANDARD
+                    .encode(hayro::render(page, &interpreter_settings, &render_settings).take_png())
             })
             .await?;
 
@@ -281,9 +322,10 @@ impl PdflensService {
     #[instrument(skip_all)]
     async fn read_pdf_as_text_handler(
         &self,
-        params: &ReadPdfAsTextParams,
+        params: ReadPdfAsTextParams,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult> {
-        let file_data = self.load_file(&params.path).await?;
+        let file_data = self.load_file(&params.path, &context.peer).await?;
         let mut pages =
             spawn_blocking(move || extract_text_from_mem_by_pages(&file_data)).await??;
 
@@ -306,9 +348,10 @@ impl PdflensService {
     #[instrument(skip_all)]
     async fn read_pdf_page_as_image_handler(
         &self,
-        params: &ReadPdfPageAsImageParams,
+        params: ReadPdfPageAsImageParams,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult> {
-        let file_data = Arc::new(self.load_file(&params.path).await?);
+        let file_data = Arc::new(self.load_file(&params.path, &context.peer).await?);
         let pdf = spawn_blocking(|| match hayro::Pdf::new(file_data) {
             Ok(ok) => Ok(Arc::new(ok)),
             Err(err) => bail!("Failed to load PDF: {err:?}"),
@@ -376,16 +419,19 @@ impl PdflensService {
     pub async fn get_pdf_num_pages(
         &self,
         Parameters(params): Parameters<GetPdfNumPagesParams>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.get_pdf_num_pages_handler(&params).await.map_or_else(
-            |err| {
-                tracing::error!("{err:?}");
-                Ok(CallToolResult::error(vec![
-                    Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
-                ]))
-            },
-            |ok| ok.into_call_tool_result(),
-        )
+        self.get_pdf_num_pages_handler(params, context)
+            .await
+            .map_or_else(
+                |err| {
+                    tracing::error!("{err}");
+                    Ok(CallToolResult::error(vec![
+                        Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
+                    ]))
+                },
+                |ok| ok.into_call_tool_result(),
+            )
     }
 
     #[cfg_attr(not(feature = "enable_multi_images"), allow(dead_code))]
@@ -401,10 +447,10 @@ impl PdflensService {
         Parameters(params): Parameters<ReadPdfAsImagesParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.read_pdf_as_images_handler(&params, &context)
+        self.read_pdf_as_images_handler(params, context)
             .await
             .or_else(|err| {
-                tracing::error!("{err:?}");
+                tracing::error!("{err}");
                 Ok(CallToolResult::error(vec![
                     Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
                 ]))
@@ -418,11 +464,12 @@ impl PdflensService {
     pub async fn read_pdf_as_text(
         &self,
         Parameters(params): Parameters<ReadPdfAsTextParams>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.read_pdf_as_text_handler(&params)
+        self.read_pdf_as_text_handler(params, context)
             .await
             .or_else(|err| {
-                tracing::error!("{err:?}");
+                tracing::error!("{err}");
                 Ok(CallToolResult::error(vec![
                     Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
                 ]))
@@ -436,11 +483,12 @@ impl PdflensService {
     pub async fn read_pdf_page_as_image(
         &self,
         Parameters(params): Parameters<ReadPdfPageAsImageParams>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.read_pdf_page_as_image_handler(&params)
+        self.read_pdf_page_as_image_handler(params, context)
             .await
             .or_else(|err| {
-                tracing::error!("{err:?}");
+                tracing::error!("{err}");
                 Ok(CallToolResult::error(vec![
                     Content::text(format!("{err:#}")).with_audience(vec![Role::Assistant]),
                 ]))
@@ -464,10 +512,5 @@ impl ServerHandler for PdflensService {
             instructions: Some("A tool for reading PDF files".to_owned()),
             ..Default::default()
         }
-    }
-
-    #[tracing::instrument(skip_all)]
-    async fn on_roots_list_changed(&self, context: NotificationContext<RoleServer>) {
-        self.update_roots(&context.peer).await;
     }
 }

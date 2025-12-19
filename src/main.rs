@@ -8,7 +8,9 @@ use tracing_subscriber::{EnvFilter, prelude::*};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    color_eyre::install()?;
+    color_eyre::config::HookBuilder::new()
+        .theme(color_eyre::config::Theme::new()) // Disable colors to avoid messing up MCP clients’ logs
+        .install()?;
     tracing_subscriber::registry()
         .with(tracing_error::ErrorLayer::default())
         .with({
@@ -22,7 +24,11 @@ async fn main() -> Result<()> {
             }
             filter
         })
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(std::io::stderr),
+        )
         .init();
 
     let service = PdflensService::new()
