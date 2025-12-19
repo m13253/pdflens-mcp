@@ -236,8 +236,8 @@ impl PdflensService {
                         .round() as u16)
                         .max(1);
                     RenderSettings {
-                        x_scale: width as f32 / orig_width as f32,
-                        y_scale: height as f32 / orig_height as f32,
+                        x_scale: width as f32 / orig_width,
+                        y_scale: height as f32 / orig_height,
                         width: Some(width),
                         height: Some(height),
                     }
@@ -247,15 +247,15 @@ impl PdflensService {
                         .max(1);
                     let height = image_dimension.max(1);
                     RenderSettings {
-                        x_scale: width as f32 / orig_width as f32,
-                        y_scale: height as f32 / orig_height as f32,
+                        x_scale: width as f32 / orig_width,
+                        y_scale: height as f32 / orig_height,
                         width: Some(width),
                         height: Some(height),
                     }
                 };
 
                 BASE64_STANDARD.encode(
-                    hayro::render(&page, &interpreter_settings, &render_settings).take_png(),
+                    hayro::render(page, &interpreter_settings, &render_settings).take_png(),
                 )
             })
             .await?;
@@ -337,8 +337,8 @@ impl PdflensService {
                     .round() as u16)
                     .max(1);
                 RenderSettings {
-                    x_scale: width as f32 / orig_width as f32,
-                    y_scale: height as f32 / orig_height as f32,
+                    x_scale: width as f32 / orig_width,
+                    y_scale: height as f32 / orig_height,
                     width: Some(width),
                     height: Some(height),
                 }
@@ -348,15 +348,15 @@ impl PdflensService {
                     .max(1);
                 let height = image_dimension.max(1);
                 RenderSettings {
-                    x_scale: width as f32 / orig_width as f32,
-                    y_scale: height as f32 / orig_height as f32,
+                    x_scale: width as f32 / orig_width,
+                    y_scale: height as f32 / orig_height,
                     width: Some(width),
                     height: Some(height),
                 }
             };
 
             Ok(BASE64_STANDARD
-                .encode(hayro::render(&page, &interpreter_settings, &render_settings).take_png()))
+                .encode(hayro::render(page, &interpreter_settings, &render_settings).take_png()))
         })
         .await??;
 
