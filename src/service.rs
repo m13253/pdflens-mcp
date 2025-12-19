@@ -54,12 +54,12 @@ impl PdflensService {
             Err(err) => {
                 let roots = Self::get_roots_fallback().await;
                 tracing::error!(
-                    "Failed to request root paths: {err}. Falling back to current working directory: {roots:?}"
+                    "Failed to request MCP root paths: {err}. Falling back to current working directory: {roots:?}"
                 );
                 return roots;
             }
         };
-        tracing::info!("MCP root URIs: {uris:?}");
+        tracing::info!("Resolving MCP root paths: {uris:?}");
 
         let mut roots = IndexSet::new();
         for root in uris {
@@ -93,7 +93,7 @@ impl PdflensService {
             return roots;
         }
 
-        tracing::info!("MCP root paths: {roots:?}");
+        tracing::info!("Finalized MCP root paths: {roots:?}");
         roots
     }
 
