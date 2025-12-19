@@ -7,7 +7,7 @@ use eyre::{Result, bail, eyre};
 use hayro::{InterpreterSettings, Pdf, RenderSettings};
 use indexmap::IndexSet;
 use pdf_extract::extract_text_from_mem_by_pages;
-use rmcp::handler::server::tool::{IntoCallToolResult, ToolRouter, cached_schema_for_type};
+use rmcp::handler::server::tool::{IntoCallToolResult, ToolRouter, schema_for_type};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProgressNotificationParam, Role, ServerCapabilities,
@@ -414,7 +414,7 @@ impl PdflensService {
     #[rmcp::tool(
         description = "Get the number of pages in a PDF.",
         annotations(read_only_hint = true),
-        output_schema = cached_schema_for_type::<GetPdfNumPagesResult>()
+        output_schema = schema_for_type::<GetPdfNumPagesResult>()
     )]
     pub async fn get_pdf_num_pages(
         &self,
