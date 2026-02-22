@@ -69,6 +69,25 @@ An MCP server for reading PDFs, coded by human, designed for AI.
         args = ["-c", "exec ~/.cargo/bin/pdflens-mcp"]
         ```
 
+    5. Kilo Code
+
+        ```json
+        {
+          "mcpServers": {
+            "pdflens": {
+                "command": "sh",
+                "args": ["-c", "exec ~/.cargo/bin/pdflens-mcp"],
+                "alwaysAllow": [
+                    "get_pdf_num_pages",
+                    "read_pdf_as_text",
+                    "read_pdf_page_as_image"
+                ],
+                "disabledTools": ["read_pdf_page_as_image"]
+            }
+          }
+        }
+        ```
+
 ## Path sandboxing
 
 Pdflens is designed to only read PDFs located within the user’s workspace directories, also called MCP root directories.
