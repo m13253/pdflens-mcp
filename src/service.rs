@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use base64::prelude::*;
 use eyre::{Result, bail, eyre};
-use hayro::{InterpreterSettings, Pdf, RenderSettings};
+use hayro::RenderSettings;
+use hayro::hayro_interpret::InterpreterSettings;
+use hayro::hayro_syntax::Pdf;
+use hayro::vello_cpu::color::palette::css::WHITE;
 use indexmap::IndexSet;
 use pdf_extract::extract_text_from_mem_by_pages;
 use rmcp::handler::server::tool::{IntoCallToolResult, ToolRouter, schema_for_type};
@@ -230,7 +233,7 @@ impl PdflensService {
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult> {
         let file_data = Arc::new(self.load_file(&params.path, &context.peer).await?);
-        let pdf = spawn_blocking(|| match hayro::Pdf::new(file_data) {
+        let pdf = spawn_blocking(|| match Pdf::new(file_data) {
             Ok(ok) => Ok(Arc::new(ok)),
             Err(err) => bail!("Failed to load PDF: {err:?}"),
         })
@@ -282,6 +285,7 @@ impl PdflensService {
                         y_scale: height as f32 / orig_height,
                         width: Some(width),
                         height: Some(height),
+                        bg_color: WHITE,
                     }
                 } else {
                     let width = ((image_dimension as f64 * orig_width as f64 / orig_height as f64)
@@ -293,13 +297,15 @@ impl PdflensService {
                         y_scale: height as f32 / orig_height,
                         width: Some(width),
                         height: Some(height),
+                        bg_color: WHITE,
                     }
                 };
 
-                BASE64_STANDARD
-                    .encode(hayro::render(page, &interpreter_settings, &render_settings).take_png())
+                eyre::Ok(BASE64_STANDARD.encode(
+                    hayro::render(page, &interpreter_settings, &render_settings).into_png()?,
+                ))
             })
-            .await?;
+            .await??;
 
             content.push(Content::image(image, "image/png").with_audience(vec![Role::Assistant]));
         }
@@ -352,7 +358,7 @@ impl PdflensService {
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult> {
         let file_data = Arc::new(self.load_file(&params.path, &context.peer).await?);
-        let pdf = spawn_blocking(|| match hayro::Pdf::new(file_data) {
+        let pdf = spawn_blocking(|| match Pdf::new(file_data) {
             Ok(ok) => Ok(Arc::new(ok)),
             Err(err) => bail!("Failed to load PDF: {err:?}"),
         })
@@ -384,6 +390,7 @@ impl PdflensService {
                     y_scale: height as f32 / orig_height,
                     width: Some(width),
                     height: Some(height),
+                    bg_color: WHITE,
                 }
             } else {
                 let width = ((image_dimension as f64 * orig_width as f64 / orig_height as f64)
@@ -395,11 +402,12 @@ impl PdflensService {
                     y_scale: height as f32 / orig_height,
                     width: Some(width),
                     height: Some(height),
+                    bg_color: WHITE,
                 }
             };
 
             Ok(BASE64_STANDARD
-                .encode(hayro::render(page, &interpreter_settings, &render_settings).take_png()))
+                .encode(hayro::render(page, &interpreter_settings, &render_settings).into_png()?))
         })
         .await??;
 

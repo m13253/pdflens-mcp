@@ -50,7 +50,15 @@ An MCP server for reading PDFs, coded by human, designed for AI.
         code --add-mcp "{\"name\": \"pdflens\", \"command\": \"sh\", \"args\": [\"-c\", \"exec ~/.cargo/bin/pdflens-mcp\"]}"
         ```
 
-    3. Continue.dev
+    3. Codex
+
+        ```toml
+        [mcp_servers.pdflens]
+        command = "sh"
+        args = ["-c", "exec ~/.cargo/bin/pdflens-mcp"]
+        ```
+
+    4. Continue.dev
 
         ```yaml
         mcpServers:
@@ -59,14 +67,6 @@ An MCP server for reading PDFs, coded by human, designed for AI.
             args:
               - -c
               - exec ~/.cargo/bin/pdflens-mcp
-        ```
-
-    4. Codex
-
-        ```toml
-        [mcp_servers.pdflens]
-        command = "sh"
-        args = ["-c", "exec ~/.cargo/bin/pdflens-mcp"]
         ```
 
     5. Kilo Code
@@ -83,6 +83,24 @@ An MCP server for reading PDFs, coded by human, designed for AI.
                     "read_pdf_page_as_image"
                 ],
                 "disabledTools": ["read_pdf_page_as_image"]
+            }
+          }
+        }
+        ```
+
+    6. Roo Code
+
+        ```json
+        {
+          "mcpServers": {
+            "pdflens": {
+                "command": "sh",
+                "args": ["-c", "exec ~/.cargo/bin/pdflens-mcp"],
+                "alwaysAllow": [
+                    "get_pdf_num_pages",
+                    "read_pdf_as_text",
+                    "read_pdf_page_as_image"
+                ]
             }
           }
         }
