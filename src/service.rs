@@ -9,7 +9,7 @@ use hayro::hayro_interpret::InterpreterSettings;
 use hayro::hayro_syntax::Pdf;
 use hayro::vello_cpu::color::palette::css::WHITE;
 use indexmap::IndexSet;
-use pdf_extract::extract_text_from_mem_by_pages;
+use pdf_extract::{PlainTextOutput, output_doc_page};
 use rmcp::handler::server::tool::{IntoCallToolResult, ToolRouter, schema_for_type};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
@@ -331,23 +331,70 @@ impl PdflensService {
         params: ReadPdfAsTextParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult> {
-        let file_data = self.load_file(&params.path, &context.peer).await?;
-        let mut pages =
-            spawn_blocking(move || extract_text_from_mem_by_pages(&file_data)).await??;
+        let file_data = Arc::new(self.load_file(&params.path, &context.peer).await?);
+        let pdf = spawn_blocking(|| match Pdf::new(file_data) {
+            Ok(ok) => Ok(Arc::new(ok)),
+            Err(err) => bail!("Failed to load PDF: {err:?}"),
+        })
+        .await??;
 
         // Convert to 0-based, half-closed half-open indices
-        let num_pages = pages.len();
+        let num_pages = pdf.pages().len();
         let from_page_idx = params.from_page.saturating_sub(1).min(num_pages);
         let to_page_idx = params
             .to_page
             .map(|x| x.clamp(from_page_idx, num_pages))
             .unwrap_or(num_pages);
+        let page_count = to_page_idx - from_page_idx;
 
-        pages.truncate(to_page_idx);
-        pages.drain(..from_page_idx);
+        let progress_token = context.meta.get_progress_token();
+        let mut content = String::new();
+        for (i, page_idx) in (from_page_idx..to_page_idx)
+            .enumerate()
+            .take_while(|_| !context.ct.is_cancelled())
+        {
+            if let Some(progress_token) = &progress_token {
+                context
+                    .peer
+                    .notify_progress(ProgressNotificationParam {
+                        progress_token: progress_token.clone(),
+                        progress: i as f64,
+                        total: Some(page_count as f64),
+                        message: None,
+                    })
+                    .await?;
+            };
+
+            if i != 0 {
+                content.push('\x0c');
+            }
+
+            let pdf = pdf.clone();
+            let new_content = spawn_blocking(move || {
+                let mut text = content;
+                let mut device = PlainTextOutput::new(&mut text);
+                output_doc_page(&pdf, &mut device, u32::try_from(page_idx)? + 1)?;
+                eyre::Ok(text)
+            })
+            .await??;
+
+            content = new_content;
+        }
+
+        if let Some(progress_token) = &progress_token {
+            context
+                .peer
+                .notify_progress(ProgressNotificationParam {
+                    progress_token: progress_token.clone(),
+                    progress: page_count as f64,
+                    total: Some(page_count as f64),
+                    message: None,
+                })
+                .await?;
+        };
 
         Ok(CallToolResult::success(vec![
-            Content::text(pages.join("\x0c")).with_audience(vec![Role::Assistant]),
+            Content::text(content).with_audience(vec![Role::Assistant]),
         ]))
     }
 

@@ -20,7 +20,7 @@ color-eyre = "0.6.5"
 eyre = "0.6.12"
 hayro = "0.5.0"
 indexmap = "2.13.0"
-pdf-extract = "0.10.0"
+pdf-extract = "0.11.0"
 rmcp = { version = "0.16.0", features = ["transport-io"] }
 schemars = { version = "1.2.1", features = ["preserve_order"] }
 serde = "1.0.228"
@@ -33,3 +33,6 @@ url = "2.5.8"
 
 [features]
 enable_multi_images = []
+
+[patch.'crates-io']
+pdf-extract = { git = 'https://github.com/jrmuizel/pdf-extract.git', branch = 'hayro' }
