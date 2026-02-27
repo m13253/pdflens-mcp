@@ -468,7 +468,12 @@ impl PdflensService {
 impl PdflensService {
     #[rmcp::tool(
         description = "Get the number of pages in a PDF.",
-        annotations(read_only_hint = true),
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        ),
         output_schema = schema_for_type::<GetPdfNumPagesResult>()
     )]
     pub async fn get_pdf_num_pages(
@@ -494,7 +499,12 @@ impl PdflensService {
         feature = "enable_multi_images",
         rmcp::tool(
             description = "Read one page of a PDF as an image. The output contains one image per page. Performance recommendation: Only use this tool on specific pages after reading the text version.",
-            annotations(read_only_hint = true)
+            annotations(
+                read_only_hint = true,
+                destructive_hint = false,
+                idempotent_hint = true,
+                open_world_hint = false,
+            ),
         )
     )]
     pub async fn read_pdf_as_images(
@@ -514,7 +524,12 @@ impl PdflensService {
 
     #[rmcp::tool(
         description = "Read a PDF in plain text format. The output separates each page with “\x0c” (U+000C). Performance recommendation: if numPages < 1000, read from first page to last page; otherwise, read in chunks of 1000 pages.",
-        annotations(read_only_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
     )]
     pub async fn read_pdf_as_text(
         &self,
@@ -533,7 +548,12 @@ impl PdflensService {
 
     #[rmcp::tool(
         description = "Read one page of a PDF as an image. You may call this tool multiple times in parallel to read multiple pages.",
-        annotations(read_only_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
     )]
     pub async fn read_pdf_page_as_image(
         &self,
