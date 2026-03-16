@@ -21,18 +21,18 @@ eyre = "0.6.12"
 hayro = "0.5.0"
 indexmap = "2.13.0"
 pdf-extract = "0.11.0"
-rmcp = { version = "0.17.0", features = ["transport-io"] }
+rmcp = { version = "1.2.0", features = ["transport-io"] }
 schemars = { version = "1.2.1", features = ["preserve_order"] }
 serde = "1.0.228"
 serde_json = "1.0.149"
-tokio = { version = "1.49.0", features = ["fs", "rt-multi-thread"] }
+tokio = { version = "1.50.0", features = ["fs", "rt-multi-thread"] }
 tracing = "0.1.44"
 tracing-error = "0.2.1"
-tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = "2.5.8"
 
 [features]
 enable_multi_images = []
 
 [patch.'crates-io']
-pdf-extract = { git = 'https://github.com/m13253/pdf-extract.git', branch = 'hayro' }
+pdf-extract = { git = 'https://codeberg.org/m13253/pdf-extract.git', branch = 'hayro-typed-iter' }

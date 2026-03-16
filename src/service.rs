@@ -575,17 +575,12 @@ impl PdflensService {
 impl ServerHandler for PdflensService {
     #[tracing::instrument(skip_all)]
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: "pdflens".to_owned(),
-                title: Some("pdflens".to_owned()),
-                version: env!("CARGO_PKG_VERSION").to_owned(),
-                website_url: Some("https://github.com/m13253/pdflens-mcp".to_owned()),
-                ..Default::default()
-            },
-            instructions: Some("A tool for reading PDF files".to_owned()),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions("A tool for reading PDF files")
+            .with_server_info(
+                Implementation::new("pdflens", env!("CARGO_PKG_VERSION"))
+                    .with_title("pdflens")
+                    .with_website_url("https://codeberg.org/m13253/pdflens-mcp"),
+            )
     }
 }
