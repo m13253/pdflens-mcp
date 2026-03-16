@@ -498,7 +498,7 @@ impl PdflensService {
     #[cfg_attr(
         feature = "enable_multi_images",
         rmcp::tool(
-            description = "Read pages of a PDF as images. The output contains one image per page. Performance recommendation: Only use this tool on specific pages after reading the text version.",
+            description = "Read consecutive pages of a PDF as images.\nPerformance recommendation: Read in chunks of 3 pages. `read_pdf_as_text` is faster than `read_pdf_as_images`.",
             annotations(
                 read_only_hint = true,
                 destructive_hint = false,
@@ -523,7 +523,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Read a PDF in plain text format. The output separates each page with “\x0c” (U+000C). Performance recommendation: if numPages < 100, read from first page to last page; otherwise, read in chunks of 100 pages.",
+        description = "Read a PDF in plain text format. Each page is separated by “\x0c” (U+000C).\nPerformance recommendation: Read in chunks of 100 pages. Do not use `read_file` or `readFile` on PDFs because PDFs are binary files.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -547,7 +547,7 @@ impl PdflensService {
     }
 
     #[rmcp::tool(
-        description = "Read one page of a PDF as an image. You may call this tool multiple times in parallel to read multiple pages.",
+        description = "Read one page of a PDF as an image. You may call this tool multiple times in parallel to read multiple pages.\nPerformance recommendation: `read_pdf_as_text` is faster than `read_pdf_page_as_image`.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,

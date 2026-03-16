@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct GetPdfNumPagesParams {
     #[schemars(
         description = "Absolute paths should start with `file:///`. Relative paths are relative to any of the user’s current workspace directories.",
-        example = "file:///home/user/Documents/workspace/document.pdf",
-        example = "file:///C:/Users/Admin/Documents/workspace/document.pdf",
-        example = "./document.pdf"
+        example = "file:///C:/Users/Admin/Documents/example-project/example-document.pdf",
+        example = "./example-document.pdf"
     )]
     pub path: String,
 }
@@ -21,15 +20,14 @@ pub struct GetPdfNumPagesParams {
 pub struct ReadPdfAsImagesParams {
     #[schemars(
         description = "Absolute paths should start with `file:///`. Relative paths are relative to any of the user’s current workspace directories.",
-        example = "file:///home/user/Documents/workspace/document.pdf",
-        example = "file:///C:/Users/Admin/Documents/workspace/document.pdf",
-        example = "./document.pdf"
+        example = "file:///C:/Users/Admin/Documents/example-project/example-document.pdf",
+        example = "./example-document.pdf"
     )]
     pub path: String,
     #[serde(default = "const_usize::<1>")]
-    #[schemars(example = 1, range(min = 1))]
+    #[schemars(range(min = 1))]
     pub from_page: usize,
-    #[schemars(example = 2, range(min = 1))]
+    #[schemars(range(min = 1))]
     pub to_page: Option<usize>,
     #[serde(default = "const_u16::<1024>")]
     #[schemars(
@@ -46,15 +44,14 @@ pub struct ReadPdfAsImagesParams {
 pub struct ReadPdfAsTextParams {
     #[schemars(
         description = "Absolute paths should start with `file:///`. Relative paths are relative to any of the user’s current workspace directories.",
-        example = "file:///home/user/Documents/workspace/document.pdf",
-        example = "file:///C:/Users/Admin/Documents/workspace/document.pdf",
-        example = "./document.pdf"
+        example = "file:///C:/Users/Admin/Documents/example-project/example-document.pdf",
+        example = "./example-document.pdf"
     )]
     pub path: String,
     #[serde(default = "const_usize::<1>")]
-    #[schemars(example = 1, range(min = 1))]
+    #[schemars(range(min = 1))]
     pub from_page: usize,
-    #[schemars(description = "null = last page", example = None::<usize>, example = 1000, range(min = 1))]
+    #[schemars(description = "Out-of-range is fine", example = None::<usize>, range(min = 1))]
     pub to_page: Option<usize>,
 }
 
@@ -64,13 +61,12 @@ pub struct ReadPdfAsTextParams {
 pub struct ReadPdfPageAsImageParams {
     #[schemars(
         description = "Absolute paths should start with `file:///`. Relative paths are relative to any of the user’s current workspace directories.",
-        example = "file:///home/user/Documents/workspace/document.pdf",
-        example = "file:///C:/Users/Admin/Documents/workspace/document.pdf",
-        example = "./document.pdf"
+        example = "file:///C:/Users/Admin/Documents/example-project/example-document.pdf",
+        example = "./example-document.pdf"
     )]
     pub path: String,
     #[serde(default = "const_usize::<1>")]
-    #[schemars(example = 1, range(min = 1))]
+    #[schemars(range(min = 1))]
     pub page: usize,
     #[serde(default = "const_u16::<1024>")]
     #[schemars(
