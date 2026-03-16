@@ -22,7 +22,7 @@ An MCP server for reading PDFs, coded by human, designed for AI.
 2.  Download and build pdflens-mcp from [crates.io](https://crates.io/crates/pdflens-mcp)
 
     ```bash
-    cargo install pdflens-mcp
+    cargo install --git https://codeberg.org/m13253/pdflens-mcp.git pdflens-mcp
     ```
 
     Usually, the program is installed to `$HOME/.cargo/bin/pdflens-mcp`. You can use `cargo install --root /another/path pdflens-mcp` to set a custom installation path.
@@ -114,7 +114,7 @@ An MCP server for reading PDFs, coded by human, designed for AI.
               "tools": {
                 "mcp:pdflens:get_pdf_num_pages": {"default": "allow"},
                 "mcp:pdflens:read_pdf_as_text": {"default": "allow"},
-                "mcp:pdflens:read_pdf_page_as_image": {"default": "allow"}
+                "mcp:pdflens:read_pdf_page_as_image": {"default": "deny"}
               }
             }
           },
