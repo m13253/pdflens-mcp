@@ -79,8 +79,7 @@ An MCP server for reading PDFs, coded by human, designed for AI.
                 "args": ["-c", "exec ~/.cargo/bin/pdflens-mcp"],
                 "alwaysAllow": [
                     "get_pdf_num_pages",
-                    "read_pdf_as_text",
-                    "read_pdf_page_as_image"
+                    "read_pdf_as_text"
                 ],
                 "disabledTools": ["read_pdf_page_as_image"]
             }
@@ -101,6 +100,29 @@ An MCP server for reading PDFs, coded by human, designed for AI.
                     "read_pdf_as_text",
                     "read_pdf_page_as_image"
                 ]
+            }
+          }
+        }
+        ```
+
+    7. Zed
+
+        ```json
+        {
+          "agent": {
+            "tool_permissions": {
+              "tools": {
+                "mcp:pdflens:get_pdf_num_pages": {"default": "allow"},
+                "mcp:pdflens:read_pdf_as_text": {"default": "allow"},
+                "mcp:pdflens:read_pdf_page_as_image": {"default": "allow"}
+              }
+            }
+          },
+          "context_servers": {
+            "pdflens": {
+              "command": "sh",
+              "args": ["-c", "exec ~/.cargo/bin/pdflens-mcp"],
+              "enabled": true,
             }
           }
         }
@@ -128,7 +150,7 @@ If your MCP client doesn’t specify a root path, pdflens will fallback to the c
 
 ## Known issue
 
-1. pdflens uses [pdf-extract](https://github.com/jrmuizel/pdf-extract) to extract text from PDFs. It is not perfect and may crash with some PDFs. I am waiting for a new feature that is recently added into [hayro#457](https://github.com/LaurenzV/hayro/pull/457) to release. Switching the extraction library to hayro will hopefully support more PDFs.
+1. pdflens uses [pdf-extract](https://github.com/jrmuizel/pdf-extract) to extract text from PDFs. It is not perfect and may crash with some PDFs. I am waiting for [pdf-extract#142](https://github.com/jrmuizel/pdf-extract/pull/142) to land on its master branch.
 
 ## Not-vibe-coded declaration
 
