@@ -82,7 +82,6 @@ pub struct ReadPdfPageAsImageParams {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[schemars(title = "pdflens_get_pdf_num_pages")]
 pub struct GetPdfNumPagesResult {
-    #[schemars(example = 42)]
     pub num_pages: usize,
 }
 
